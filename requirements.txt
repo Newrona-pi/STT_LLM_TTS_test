@@ -4,4 +4,4 @@ python-dotenv
 openai
 twilio
 httpx
-websockets
+websockets>=12.0
