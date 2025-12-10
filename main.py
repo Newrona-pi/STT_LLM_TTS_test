@@ -137,11 +137,18 @@ async def handle_recording(
         # Basic認証を追加 (Twilioのセキュリティ設定によっては必須)
         auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN else None
         
-        async with httpx.AsyncClient() as client:
-            audio_response = await client.get(f"{RecordingUrl}.wav", auth=auth, timeout=10.0)
+        # TwilioのRecordingURLはS3等へリダイレクトされることが多いため、follow_redirects=True が必須
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            target_url = f"{RecordingUrl}.wav" # wav形式を明示
+            print(f"[DEBUG] Downloading audio from: {target_url}")
+            
+            # 認証付きでGet
+            audio_response = await client.get(target_url, auth=auth, timeout=10.0)
         
         if audio_response.status_code != 200:
-            print(f"[ERROR] Failed to download audio: {audio_response.status_code} - URL: {RecordingUrl}.wav")
+            print(f"[ERROR] Failed to download audio: {audio_response.status_code} - URL: {target_url}")
+            print(f"[DEBUG] Response body: {audio_response.text[:200]}") # エラー内容の一部を出力
+            
             # 認証エラーの可能性が高いためログに残す
             # エラー時も切断せず、再録音を促す
             resp.say("音声の取得に失敗しました。もう一度お話しください。", language="ja-JP")
