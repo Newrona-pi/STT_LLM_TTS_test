@@ -1,6 +1,6 @@
-# Twilio + OpenAI Voice Bot
+# Twilio + OpenAI Voice Bot (Railway Version)
 
-Render + Twilio + OpenAI API を使用した、AIと音声対話するボットの最小構成です。
+Railway + Twilio + OpenAI API を使用した、AIと音声対話するボットの最小構成です。
 
 ## 概要
 
@@ -12,48 +12,50 @@ Render + Twilio + OpenAI API を使用した、AIと音声対話するボット�
 6. Twilio で再生
 7. ループ
 
-## デプロイ手順 (Render)
+## デプロイ手順 (Railway)
 
 ### 1. 準備
 
-- GitHub リポジトリにこのコードをプッシュしてください。
-- [Render](https://render.com/) のアカウントを作成してください。
+- このリポジトリを自身のGitHubアカウントにフォークまたはプッシュしてください。
+- [Railway](https://railway.app/) のアカウントを作成してください。
 - [Twilio](https://twilio.com/) のアカウントを作成し、電話番号を取得してください。
 - [OpenAI](https://openai.com/) のAPIキーを取得してください。
 
-### 2. Render Web Service の作成
+### 2. Railway Project の作成
 
-1. Render ダッシュボードで **New +** -> **Web Service** を選択。
-2. GitHub リポジトリを選択。
-3. 設定項目:
-    - **Name**: 任意の名前 (例: `my-voice-bot`)
-    - **Runtime**: `Python 3`
-    - **Build Command**: `pip install -r requirements.txt`
-    - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-4. **Environment Variables** (環境変数) を設定:
-    - `PYTHON_VERSION`: `3.11.9`
-    - `OPENAI_API_KEY`: (OpenAIのAPIキー `sk-...`)
-    - `TWILIO_ACCOUNT_SID`: (TwilioのAccount SID)
-    - `TWILIO_AUTH_TOKEN`: (TwilioのAuth Token)
-    - `BASE_URL`: `https://あなたのアプリ名.onrender.com` (生成されるURLが決まってから設定してもOKですが、初回デプロイ後に必ず設定してください。末尾の `/` は無し)
+1. Railway ダッシュボードで **New Project** -> **Deploy from GitHub repository** を選択。
+2. このリポジトリ (`STT_LLM_TTS_test` など) を選択。
+3. **Deploy Now** をクリックしてデプロイを開始（初回は失敗する可能性がありますが、環境設定後に再デプロイすればOKです）。
 
-5. **Create Web Service** をクリック。
+### 3. 環境変数の設定 (Variables)
 
-### 3. Twilio の設定
+Railway のプロジェクト画面から作成された Service をクリックし、**Variables** タブを選択して以下の変数を追加してください。
 
-1. Render のデプロイが完了し、URL (例: `https://my-voice-bot.onrender.com`) が発行されたことを確認。
+| Variable Name | Description |
+|---|---|
+| `OPENAI_API_KEY` | OpenAIのAPIキー (`sk-...`) |
+| `TWILIO_ACCOUNT_SID` | TwilioのAccount SID |
+| `TWILIO_AUTH_TOKEN` | TwilioのAuth Token |
+| `BASE_URL` | Generate Domainで発行されたURL (例: `https://xxx.up.railway.app`)。<br>末尾の `/` は含めないでください。 |
+| `PORT` | Railwayによって自動設定されますが、念のため追加も可 (通常不要) |
+
+※ `BASE_URL` は、Service の **Settings** タブにある **Networking** セクションで **Generate Domain** をクリックして発行されたURLを使用してください。
+
+### 4. Twilio の設定
+
+1. Railway で発行されたURLを確認 (例: `https://my-voice-bot.up.railway.app`)。
 2. Twilio コンソールの **Phone Numbers** -> **Manage** -> **Active numbers** から対象の電話番号を選択。
 3. **Voice & Fax** セクションの **A Call Comes In** を設定:
     - **Webhook** を選択
-    - URL: `https://YOUR-RENDER-URL.onrender.com/voice/entry`
+    - URL: `https://YOUR-RAILWAY-URL.up.railway.app/voice/entry`
     - Method: `HTTP POST`
 4. **Save** で保存。
 
 ## 確認方法
 
-設定した電話番号に電話をかけてください。「お電話ありがとうございます」とAIが応答すれば成功です。
+設定したTwilioの電話番号に電話をかけてください。「お電話ありがとうございます」とAIが応答すれば成功です。
 
 ## 注意点
 
 - **コスト**: OpenAI API (Whisper, GPT, TTS) および Twilio 通話料がかかります。
-- **ログ**: 会話内容は `logs.sqlite3` に保存されますが、Render の無料プラン等はディスクが永続化されないため、再起動すると消える可能性があります。永続化が必要な場合は Render Disk を利用するか、外部DB (PostgreSQLなど) を検討してください。
+- **ログ**: 会話内容は `logs.sqlite3` に保存されますが、Railway の一時的なファイルシステムでは再起動（デプロイ）のたびにデータが消えます。永続化したい場合は Railway の **Volume** を設定するか、PostgreSQL プラグインなどを利用してください。
