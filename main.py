@@ -219,7 +219,6 @@ async def voice_stream(websocket: WebSocket):
                     print(f"[ERROR] Twilio receive error: {e}")
                     import traceback
                     print(f"[ERROR] Traceback: {traceback.format_exc()}")
-                    break
 
             async def receive_from_openai():
                 nonlocal stream_sid
@@ -283,7 +282,6 @@ async def voice_stream(websocket: WebSocket):
                     print(f"[ERROR] OpenAI receive error: {e}")
                     import traceback
                     print(f"[ERROR] Traceback: {traceback.format_exc()}")
-                    break
 
             await asyncio.gather(receive_from_twilio(), receive_from_openai())
 
