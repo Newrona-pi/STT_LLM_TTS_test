@@ -80,22 +80,15 @@ async def voice_stream(websocket: WebSocket):
                 "session": {
                     "modalities": ["text", "audio"],
                     "instructions": SYSTEM_MESSAGE,
-                    "voice": "alloy", # alloy, echo, shimmer
-                    "input_audio_format": "g711_ulaw", # Twilioは mulaw (g711_ulaw)
+                    "voice": "alloy",
+                    "input_audio_format": "g711_ulaw",
                     "output_audio_format": "g711_ulaw",
-                    "turn_detection": {
-                        "type": "server_vad", # サーバー側発話検知 (これぞRealtime!)
-                        "threshold": 0.6, # ミュート明けのエコー誤検知防止のため少し上げる
-                        "prefix_padding_ms": 300,
-                        "silence_duration_ms": 500 # 標準に戻す
-                    }
+                    "turn_detection": None # サーバーVADを完全無効化（手動トリガーのみ）
                 }
             }
             await openai_ws.send(json.dumps(session_update))
 
-            # 初回の挨拶をトリガーする場合
-            # conversation.item.create (AI Role) -> response.create でもいいが、
-            # シンプルに response.create で挨拶を指示する
+            # 初回の挨拶をトリガー
             initial_greeting = {
                 "type": "response.create",
                 "response": {
@@ -106,15 +99,24 @@ async def voice_stream(websocket: WebSocket):
             await openai_ws.send(json.dumps(initial_greeting))
 
             stream_sid = None
+            import audioop
+            import base64
 
-            # 半二重通信（エコー防止）ようの制御変数
-            # AIが喋っている間（および直後）はマイク入力を無視する
-            import time
+            # 自前VADパラメータ
+            VOICE_THRESHOLD = 500  # 音量閾値（要調整: 300~1000くらい）
+            SILENCE_DURATION_MS = 800 # 話し終わりとみなす無音期間
+            
+            is_speaking = False
+            last_speech_time = 0
+            
+            # エコー対策用: AI発話直後の無視期間
             latest_media_timestamp = 0
 
             async def receive_from_twilio():
                 nonlocal stream_sid
+                nonlocal is_speaking, last_speech_time
                 nonlocal latest_media_timestamp
+                
                 try:
                     while True:
                         data = await websocket.receive_text()
@@ -123,26 +125,59 @@ async def voice_stream(websocket: WebSocket):
                         event_type = msg.get("event")
                         
                         if event_type == "media":
-                            # 音声データ受信 (Twilio -> OpenAI)
-                            # トラックを確認し、"inbound"（ユーザー音声）のみをOpenAIに送る
-                            # "outbound"（AI音声）が混ざると自己ループの原因になる
                             track = msg["media"].get("track")
                             
-                            # AIが発話中（最後の音声送信から3000ms以内）は入力を無視する
-                            # これによりエコーがOpenAIに届くのを防ぐ（半二重化）
-                            # 2000msでもエコーを拾ったため3000msに延長
-                            if latest_media_timestamp > 0 and (time.time() * 1000 - latest_media_timestamp < 3000):
-                                # print(f"[DEBUG] Ignored user audio (Half-duplex mute active)")
+                            # AIが発話中（直後）は無視（エコー対策）
+                            # サーバーVADを切ったので、ここは短め(500ms)でも効果あるはずだが念のため1秒
+                            if latest_media_timestamp > 0 and (time.time() * 1000 - latest_media_timestamp < 1000):
                                 continue
 
                             if track == "inbound":
                                 audio_payload = msg["media"]["payload"]
+                                
+                                # 常にバッファには送る
                                 await openai_ws.send(json.dumps({
                                     "type": "input_audio_buffer.append",
                                     "audio": audio_payload
                                 }))
+                                
+                                # --- 簡易VAD (音量検知) ---
+                                try:
+                                    chunk = base64.b64decode(audio_payload)
+                                    # ulawなので詳細な音量ではないが、変化はわかる。
+                                    # 正確にはpcmに変換すべきだが、簡易RMSで判定トライ
+                                    # ulawのRMS計算はaudioopでは直接できないため、簡易的にバイト値の変動を見るか
+                                    # ここでは厳密な変換より、Twilioからのデータ有無を信じる
+                                    # 実はaudioop.rms(chunk, 1) は PCM用だが、ulawでも「無音=FF or 7F」で一定、「声=バラバラ」なので
+                                    # 変化量を見るのが適切だが、簡易的に `len(chunk)` は常に一定なので
+                                    # audioop.ulaw2lin でリニアPCMにしてから rms を測るのが正解
+                                    
+                                    pcm_chunk = audioop.ulaw2lin(chunk, 2)
+                                    rms = audioop.rms(pcm_chunk, 2)
+                                    
+                                    if rms > VOICE_THRESHOLD:
+                                        if not is_speaking:
+                                            print(f"[VAD] Speech Detected (RMS: {rms})")
+                                            is_speaking = True
+                                        last_speech_time = time.time() * 1000
+                                    else:
+                                        # 静寂
+                                        if is_speaking:
+                                            # 話し終わったかも判定
+                                            silence_duration = (time.time() * 1000) - last_speech_time
+                                            if silence_duration > SILENCE_DURATION_MS:
+                                                print(f"[VAD] Silence detected ({silence_duration}ms) -> Committing")
+                                                is_speaking = False
+                                                
+                                                # 発話終了とみなしてコミット＆レスポンス生成
+                                                await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+                                                await openai_ws.send(json.dumps({"type": "response.create"}))
+                                                
+                                except Exception as e:
+                                    # VADエラー時は無視して流す
+                                    pass
+
                             else:
-                                # outboundなどは無視
                                 pass
                         
                         elif event_type == "start":
@@ -165,43 +200,22 @@ async def voice_stream(websocket: WebSocket):
                         msg = json.loads(data)
                         event_type = msg.get("type")
 
-                        # AIの音声データ受信 (OpenAI -> Twilio)
                         if event_type == "response.audio.delta":
-                            # 発話中はタイムスタンプを更新し続ける
                             latest_media_timestamp = time.time() * 1000
-                            # print(f"[DEBUG] AI Speaking... Mute updated.") # 多すぎるのでコメントアウト
-
                             audio_delta = msg.get("delta")
                             if audio_delta and stream_sid:
                                 await websocket.send_json({
                                     "event": "media",
                                     "streamSid": stream_sid,
-                                    "media": {
-                                        "payload": audio_delta
-                                    }
+                                    "media": {"payload": audio_delta}
                                 })
                         
-                        elif event_type == "response.audio.done":
-                             # 発話完了イベントだが、エコーのラグを考慮して
-                             # タイムスタンプのリセットはせず、タイムアウトで自然に解除させる
-                             pass
-                        
-                        # ユーザーの発話を検知した時 (Barge-in / 割り込み)
-                        # 半二重モードのため、基本的には反応させない（AI発話を優先）
-                        elif event_type == "input_audio_buffer.speech_started":
-                             print("[INFO] Speech detected (Ignored/Managed by half-duplex logic)")
-
-                        # ログ出力用
                         elif event_type == "error":
                             print(f"[OPENAI ERROR] {msg}")
-                        elif event_type == "response.text.delta":
-                             # テキスト生成の様子（デバッグ用）
-                             pass 
 
                 except Exception as e:
                     print(f"[ERROR] OpenAI receive error: {e}")
 
-            # 双方向ストリームの並列実行
             await asyncio.gather(receive_from_twilio(), receive_from_openai())
 
     except Exception as e:
