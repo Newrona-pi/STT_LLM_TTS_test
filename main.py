@@ -2,6 +2,9 @@ import os
 import json
 import asyncio
 import websockets
+import time
+import audioop
+import base64
 from fastapi import FastAPI, WebSocket, Request, Response
 from fastapi.responses import HTMLResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect
@@ -99,12 +102,9 @@ async def voice_stream(websocket: WebSocket):
             await openai_ws.send(json.dumps(initial_greeting))
 
             stream_sid = None
-            import audioop
-            import base64
-
             # 自前VADパラメータ
-            VOICE_THRESHOLD = 500  # 音量閾値（要調整: 300~1000くらい）
-            SILENCE_DURATION_MS = 800 # 話し終わりとみなす無音期間
+            VOICE_THRESHOLD = 600  # 音量閾値（要調整）
+            SILENCE_DURATION_MS = 600 # 話し終わりとみなす無音期間（早める）
             
             is_speaking = False
             last_speech_time = 0
