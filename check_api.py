@@ -45,7 +45,7 @@ async def test_realtime():
         "OpenAI-Beta": "realtime=v1"
     }
     try:
-        async with websockets.connect(ws_url, extra_headers=headers) as ws:
+        async with websockets.connect(ws_url, additional_headers=headers) as ws:
             print("✅ Realtime API WebSocket Connection Successful!")
             
             # Send a simple session update to verify protocol

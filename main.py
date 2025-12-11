@@ -70,7 +70,7 @@ async def voice_stream(websocket: WebSocket):
     }
 
     try:
-        async with websockets.connect(OPENAI_WS_URL, extra_headers=headers) as openai_ws:
+        async with websockets.connect(OPENAI_WS_URL, additional_headers=headers) as openai_ws:
             print("[INFO] OpenAI Realtime API Connected")
             
             # セッション初期化 (Session Update)
