@@ -46,7 +46,7 @@ async def voice_entry(request: Request):
     
     # 接続
     connect = Connect()
-    stream = connect.stream(url=f"wss://{request.headers.get('host')}/voice/stream")
+    stream = connect.stream(url=f"wss://{request.headers.get('host')}/voice/stream", track="inbound_track")
     response.append(connect)
     
     # ストリームが切断された場合のフォールバック
