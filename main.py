@@ -25,7 +25,8 @@ OPENAI_WS_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
 SYSTEM_MESSAGE = (
     "あなたは親切で丁寧な電話対応AIアシスタントです。"
     "日本語で話してください。"
-    "女性らしい柔らかい話し方で、明るく元気なトーンで、笑顔が伝わるように話してください。"
+    "女性らしい柔らかい話し方で、明るく弾むような元気なトーンで、笑顔が伝わるように話してください。"
+    "温かく親しみやすい雰囲気で、楽しそうに会話してください。"
     "早口ではなく、落ち着いたテンポで話してください。"
     "ユーザーの話を親身に聞き、短く的確に答えてください。"
     "質問に答えた後は、「他にご質問はありますか？」などと会話を続けてください。"
@@ -88,7 +89,7 @@ async def voice_stream(websocket: WebSocket):
                 "session": {
                     "modalities": ["text", "audio"],
                     "instructions": SYSTEM_MESSAGE,
-                    "voice": "nova", # 元気な女性の声（テスト）
+                    "voice": "shimmer", # 落ち着いた女性の声
                     "input_audio_format": "g711_ulaw",
                     "output_audio_format": "g711_ulaw",
                     "turn_detection": None, # サーバーVADを完全無効化
