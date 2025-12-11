@@ -14,7 +14,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 PORT = int(os.environ.get("PORT", 8080))
 
 # OpenAI Realtime API 設定
-OPENAI_WS_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+OPENAI_WS_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
 
 # システムプロンプト (Session Updateで送信)
 SYSTEM_MESSAGE = (
