@@ -8,9 +8,14 @@ from app.database import get_session
 from app.models import Candidate, Interview, QuestionSet, InterviewReview
 from app.routers.admin import get_current_username
 
+from pathlib import Path
+
 router = APIRouter(prefix="/admin", tags=["admin_view"], dependencies=[Depends(get_current_username)])
 
-templates = Jinja2Templates(directory="app/templates")
+# Resolve absolute path to templates
+BASE_DIR = Path(__file__).resolve().parent.parent # points to 'app' directory
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, session: Session = Depends(get_session)):
