@@ -23,16 +23,58 @@ OPENAI_WS_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
 
 # システムプロンプト (Session Updateで送信)
 SYSTEM_MESSAGE = (
-    "あなたは親切で丁寧な電話対応AIアシスタントです。"
-    "日本語で話してください。"
-    "女性らしい柔らかい話し方で、明るく弾むような元気なトーンで、笑顔が伝わるように話してください。"
-    "温かく親しみやすい雰囲気で、楽しそうに会話してください。"
+    "あなたはAI転職エージェントのアシスタントです。"
+    "転職希望者との面談日程を調整することが主な役割です。"
+    "女性らしい柔らかい話し方で、明るく丁寧なトーンで話してください。"
     "早口ではなく、落ち着いたテンポで話してください。"
-    "ユーザーの話を親身に聞き、短く的確に答えてください。"
-    "質問に答えた後は、「他にご質問はありますか？」などと会話を続けてください。"
-    "知らない情報や最新の出来事については、正直に「申し訳ございません、その情報は把握しておりません」と答えてください。"
-    "ユーザーが話し終わるまで十分に待ってください。相槌は最小限にし、自身の発話が割り込まないように注意してください。"
-    "もしユーザーが会話を終了したそうなら、必ず丁寧にお別れの挨拶を完全に言い終わってから、end_call ツールを呼び出してください。挨拶を言う前にツールを呼び出さないでください。"
+    ""
+    "【重要な注意事項】"
+    "・ユーザーが完全に話し終わるまで待ってください。途中で話し始めないでください。"
+    "・日付を聞いたら、必ず復唱して確認してください（例：12月19日木曜日ですね）"
+    "・「明日」「来週」などの相対的な日付表現を聞いたら、まず calculate_date ツールで正確な日付に変換してください"
+    "・時間について「夕方」「午後」「朝」などの曖昧な表現を聞いたら、具体的な時間を聞き返してください（例：「夕方でしたら、何時頃がよろしいでしょうか」）"
+    ""
+    "【会話の流れ】"
+    "1. 最初の挨拶：「AI転職エージェントです。面談日程の調整を行いたくご連絡いたしました。3分ほどお時間よろしいでしょうか。」"
+    ""
+    "2a. 了承を得たら："
+    "   「ありがとうございます。転職活動にあたり、エージェントと面談を行う日程を設定いたします。お時間は30分を想定しております。ご都合の良い日付はございますか。」"
+    ""
+    "2b. 時間がないと言われたら："
+    "   「承知いたしました。それでは改めてご連絡させていただきたいのですが、いつ頃でしたらお時間よろしいでしょうか。」"
+    "   → 相対的な日付（例：明日、来週）なら calculate_date で変換"
+    "   → 具体的な日時が決まったら save_callback で保存"
+    "   → 「それでは、〇月〇日〇時頃に改めてご連絡させていただきます。失礼いたします。」then end_call"
+    ""
+    "3. 日付の処理："
+    "   - 相対的な表現（明日、来週など）→ まず calculate_date で変換"
+    "   - 具体的な日付を復唱確認"
+    "   - check_availability で担当者のスケジュールを確認"
+    ""
+    "4. スケジュール確認の結果："
+    "   - 空いている → 時間を聞く（1時間単位、例：13時、14時）"
+    "   - 空いていない → 他の日付を聞く"
+    "   - 時間が曖昧（夕方、午後など）→ 具体的な時間を聞き返す"
+    ""
+    "5. 日時の最終確認："
+    "   「調整ありがとうございます。〇月〇日（〇曜日）〇時でお間違いないでしょうか。」"
+    ""
+    "6. 伝言の確認（ループ開始）："
+    "   「ありがとうございます。担当者に何か伝えたい事項はございますか。」"
+    ""
+    "7. 伝言があった場合："
+    "   - 内容を復唱：「〇〇〇〇、とお伝えいたします。お間違いないでしょうか。」"
+    "   - 確認後、内容を記憶"
+    "   - 「他に伝えたい事項はございますか。」と再度聞く（6に戻る）"
+    ""
+    "8. 伝言がない場合、または「ない」と言われた場合："
+    "   - すべての伝言をまとめて save_appointment で保存"
+    ""
+    "9. 最後の挨拶："
+    "   「本日はお忙しい中お時間をいただき、ありがとうございました。当日よろしくお願いいたします。失礼いたします。」"
+    "   → その後 end_call を呼ぶ"
+    ""
+    "ユーザーが話し終わるまで十分に待ってください。相槌は最小限にしてください。"
 )
 
 app = FastAPI()
@@ -40,6 +82,36 @@ app = FastAPI()
 @app.get("/")
 def index():
     return {"message": "Twilio Media Stream Server is running!"}
+
+@app.get("/appointments")
+def get_appointments():
+    """
+    保存された予約データを確認するエンドポイント
+    """
+    import os
+    appointments_file = "appointments.json"
+    
+    if os.path.exists(appointments_file):
+        with open(appointments_file, "r", encoding="utf-8") as f:
+            appointments = json.load(f)
+        return {"appointments": appointments, "count": len(appointments)}
+    else:
+        return {"appointments": [], "count": 0, "message": "No appointments found"}
+
+@app.get("/callbacks")
+def get_callbacks():
+    """
+    保存された再架電リクエストを確認するエンドポイント
+    """
+    import os
+    callbacks_file = "callbacks.json"
+    
+    if os.path.exists(callbacks_file):
+        with open(callbacks_file, "r", encoding="utf-8") as f:
+            callbacks = json.load(f)
+        return {"callbacks": callbacks, "count": len(callbacks)}
+    else:
+        return {"callbacks": [], "count": 0, "message": "No callbacks found"}
 
 @app.post("/voice/entry")
 async def voice_entry(request: Request):
@@ -96,12 +168,82 @@ async def voice_stream(websocket: WebSocket):
                     "tools": [
                         {
                             "type": "function",
-                            "name": "get_current_date",
-                            "description": "現在の日付（日本時間）を取得する。ユーザーが「今日の日付」や「明日の日付」を聞いた場合に呼び出す。",
+                            "name": "calculate_date",
+                            "description": "相対的な日付表現（「明日」「来週」など）を正確な日付（YYYY-MM-DD形式）に変換する。",
                             "parameters": {
                                 "type": "object",
-                                "properties": {},
-                                "required": []
+                                "properties": {
+                                    "relative_expression": {
+                                        "type": "string",
+                                        "description": "相対的な日付表現（例：明日、来週の金曜日、3日後）"
+                                    }
+                                },
+                                "required": ["relative_expression"]
+                            }
+                        },
+                        {
+                            "type": "function",
+                            "name": "check_availability",
+                            "description": "指定された日付と時間に担当者が面談可能かどうかを確認する。必ずYYYY-MM-DD形式の日付を渡すこと。",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "date": {
+                                        "type": "string",
+                                        "description": "確認したい日付。必ずYYYY-MM-DD形式で指定（例: 2025-12-20）"
+                                    },
+                                    "time": {
+                                        "type": "string",
+                                        "description": "確認したい時間（オプション）。HH:00形式で指定（例: 13:00、15:00）"
+                                    }
+                                },
+                                "required": ["date"]
+                            }
+                        },
+                        {
+                            "type": "function",
+                            "name": "save_appointment",
+                            "description": "面談の予約を確定し保存する。すべての伝言をまとめて1回だけ呼び出すこと。",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "date": {
+                                        "type": "string",
+                                        "description": "面談日付（YYYY-MM-DD形式、例: 2025-12-21）"
+                                    },
+                                    "time": {
+                                        "type": "string",
+                                        "description": "面談時間（HH:00形式、例: 13:00）"
+                                    },
+                                    "messages": {
+                                        "type": "string",
+                                        "description": "担当者への伝言（複数ある場合は改行で区切る。なければ空文字）"
+                                    }
+                                },
+                                "required": ["date", "time"]
+                            }
+                        },
+                        {
+                            "type": "function",
+                            "name": "save_callback",
+                            "description": "ユーザーが今時間がないと言った場合、再架電の日時を保存する。",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "callback_date": {
+                                        "type": "string",
+                                        "description": "再架電希望日付（YYYY-MM-DD形式、例: 2025-12-20）"
+                                    },
+                                    "callback_time": {
+                                        "type": "string",
+                                        "description": "再架電希望時間（HH:00形式、例: 18:00）、指定がなければ空文字"
+                                    },
+                                    "note": {
+                                        "type": "string",
+                                        "description": "備考（例：夕方以降なら可、など。なければ空文字）"
+                                    }
+                                },
+                                "required": ["callback_date"]
                             }
                         },
                         {
@@ -125,7 +267,7 @@ async def voice_stream(websocket: WebSocket):
                 "type": "response.create",
                 "response": {
                     "modalities": ["text", "audio"],
-                    "instructions": "「お電話ありがとうございます。AIアシスタントです。ご用件をお話しください。」と挨拶してください。"
+                    "instructions": "「AI転職エージェントです。面談日程の調整を行いたくご連絡いたしました。3分ほどお時間よろしいでしょうか。」と挨拶してください。"
                 }
             }
             await openai_ws.send(json.dumps(initial_greeting))
@@ -261,23 +403,176 @@ async def voice_stream(websocket: WebSocket):
                             call_id = msg.get("call_id")
                             name = msg.get("name")
                             
-                            if name == "get_current_date":
-                                # 日本時間（JST）で現在の日付を取得
-                                jst = timezone(timedelta(hours=9))
-                                now_jst = datetime.now(jst)
-                                date_str = now_jst.strftime("%Y年%m月%d日")
-                                print(f"[INFO] Providing current date: {date_str}")
+                            if name == "calculate_date":
+                                # 相対的な日付表現を正確な日付に変換
+                                arguments = msg.get("arguments", "{}")
+                                args = json.loads(arguments) if isinstance(arguments, str) else arguments
+                                relative_expr = args.get("relative_expression", "")
                                 
-                                # ツールの実行結果を送信
+                                print(f"[INFO] Calculating date for: {relative_expr}")
+                                
+                                # 日本時間（JST）で今日の日付を取得
+                                jst = timezone(timedelta(hours=9))
+                                today = datetime.now(jst)
+                                
+                                # 簡易的な日付計算
+                                result_date = None
+                                day_name = ""
+                                
+                                if "明日" in relative_expr:
+                                    result_date = today + timedelta(days=1)
+                                elif "明後日" in relative_expr:
+                                    result_date = today + timedelta(days=2)
+                                elif "来週" in relative_expr:
+                                    result_date = today + timedelta(days=7)
+                                elif "日後" in relative_expr:
+                                    try:
+                                        import re
+                                        match = re.search(r'(\d+)日後', relative_expr)
+                                        if match:
+                                            days = int(match.group(1))
+                                            result_date = today + timedelta(days=days)
+                                    except:
+                                        pass
+                                
+                                if result_date:
+                                    date_str = result_date.strftime("%Y-%m-%d")
+                                    weekday = result_date.weekday()
+                                    day_name = ["月", "火", "水", "木", "金", "土", "日"][weekday]
+                                    output = f"{date_str}（{day_name}曜日）"
+                                else:
+                                    output = "日付を計算できませんでした。具体的な日付を教えてください。"
+                                
                                 await openai_ws.send(json.dumps({
                                     "type": "conversation.item.create",
                                     "item": {
                                         "type": "function_call_output",
                                         "call_id": call_id,
-                                        "output": date_str
+                                        "output": output
                                     }
                                 }))
-                                # 応答生成をトリガー
+                                await openai_ws.send(json.dumps({"type": "response.create"}))
+                            
+                            elif name == "check_availability":
+                                # スケジュール確認（ダミーデータ）
+                                arguments = msg.get("arguments", "{}")
+                                args = json.loads(arguments) if isinstance(arguments, str) else arguments
+                                date = args.get("date", "")
+                                time_slot = args.get("time", "")
+                                
+                                print(f"[INFO] Checking availability for {date} {time_slot}")
+                                
+                                # 日付から曜日を計算
+                                try:
+                                    from datetime import datetime as dt
+                                    check_date = dt.strptime(date, "%Y-%m-%d")
+                                    weekday = check_date.weekday()  # 0=月, 6=日
+                                    day_name = ["月", "火", "水", "木", "金", "土", "日"][weekday]
+                                    
+                                    if weekday >= 5:  # 土日
+                                        result = f"{date}（{day_name}曜日）は担当者がお休みをいただいております。平日でご都合の良い日はございますか。"
+                                    else:
+                                        if time_slot:
+                                            result = f"{date}（{day_name}曜日） {time_slot}は空いております。"
+                                        else:
+                                            result = f"{date}（{day_name}曜日）は対応可能です。"
+                                except:
+                                    result = "日付の形式を確認できませんでした。YYYY-MM-DD形式で日付を指定してください。"
+                                
+                                await openai_ws.send(json.dumps({
+                                    "type": "conversation.item.create",
+                                    "item": {
+                                        "type": "function_call_output",
+                                        "call_id": call_id,
+                                        "output": result
+                                    }
+                                }))
+                                await openai_ws.send(json.dumps({"type": "response.create"}))
+                            
+                            elif name == "save_appointment":
+                                # 予約を保存
+                                arguments = msg.get("arguments", "{}")
+                                args = json.loads(arguments) if isinstance(arguments, str) else arguments
+                                date = args.get("date", "")
+                                time_slot = args.get("time", "")
+                                messages = args.get("messages", "")
+                                
+                                print(f"[INFO] Saving appointment: {date} {time_slot}")
+                                
+                                # JSONファイルに保存
+                                import os
+                                appointments_file = "appointments.json"
+                                appointments = []
+                                
+                                if os.path.exists(appointments_file):
+                                    with open(appointments_file, "r", encoding="utf-8") as f:
+                                        appointments = json.load(f)
+                                
+                                appointment = {
+                                    "call_sid": stream_sid,
+                                    "date": date,
+                                    "time": time_slot,
+                                    "messages": messages,
+                                    "created_at": datetime.now(timezone(timedelta(hours=9))).isoformat()
+                                }
+                                appointments.append(appointment)
+                                
+                                with open(appointments_file, "w", encoding="utf-8") as f:
+                                    json.dump(appointments, f, ensure_ascii=False, indent=2)
+                                
+                                result = f"予約を確定しました。{date} {time_slot}で登録いたしました。"
+                                
+                                await openai_ws.send(json.dumps({
+                                    "type": "conversation.item.create",
+                                    "item": {
+                                        "type": "function_call_output",
+                                        "call_id": call_id,
+                                        "output": result
+                                    }
+                                }))
+                                await openai_ws.send(json.dumps({"type": "response.create"}))
+                            
+                            elif name == "save_callback":
+                                # 再架電日時を保存
+                                arguments = msg.get("arguments", "{}")
+                                args = json.loads(arguments) if isinstance(arguments, str) else arguments
+                                callback_date = args.get("callback_date", "")
+                                callback_time = args.get("callback_time", "")
+                                note = args.get("note", "")
+                                
+                                print(f"[INFO] Saving callback: {callback_date} {callback_time}")
+                                
+                                # JSONファイルに保存
+                                import os
+                                callbacks_file = "callbacks.json"
+                                callbacks = []
+                                
+                                if os.path.exists(callbacks_file):
+                                    with open(callbacks_file, "r", encoding="utf-8") as f:
+                                        callbacks = json.load(f)
+                                
+                                callback = {
+                                    "call_sid": stream_sid,
+                                    "callback_date": callback_date,
+                                    "callback_time": callback_time,
+                                    "note": note,
+                                    "created_at": datetime.now(timezone(timedelta(hours=9))).isoformat()
+                                }
+                                callbacks.append(callback)
+                                
+                                with open(callbacks_file, "w", encoding="utf-8") as f:
+                                    json.dump(callbacks, f, ensure_ascii=False, indent=2)
+                                
+                                result = f"再架電を{callback_date}に設定いたしました。"
+                                
+                                await openai_ws.send(json.dumps({
+                                    "type": "conversation.item.create",
+                                    "item": {
+                                        "type": "function_call_output",
+                                        "call_id": call_id,
+                                        "output": result
+                                    }
+                                }))
                                 await openai_ws.send(json.dumps({"type": "response.create"}))
                             
                             elif name == "end_call":
