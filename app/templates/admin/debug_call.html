@@ -1,0 +1,38 @@
+{% extends "admin/layout.html" %}
+
+{% block content %}
+<div class="header mb-4">
+    <h1>デバッグ架電ツール</h1>
+    <p class="text-muted">任意の番号と質問内容でテスト架電を実行します。</p>
+</div>
+
+<div class="card">
+    <form action="/admin/debug/call" method="post">
+        <div class="form-group mb-4">
+            <label>架電先電話番号</label>
+            <input type="text" name="phone" value="03-6240-9373" required class="form-control"
+                style="font-size: 1.2rem; padding: 10px;">
+            <p class="text-muted small">※ Twilioの認証済み番号またはVerified Caller IDである必要があります。</p>
+        </div>
+
+        <div class="form-group mb-4">
+            <label>質問1</label>
+            <textarea name="question1" required class="form-control" rows="2">弊社を希望した志望動機を教えてください</textarea>
+        </div>
+
+        <div class="form-group mb-4">
+            <label>質問2</label>
+            <textarea name="question2" required class="form-control"
+                rows="2">Photoshopやillustratorは使用したことがありますか、ある場合はどの程度出来るかを教えてください</textarea>
+        </div>
+
+        <div class="form-group mb-4">
+            <label>質問3</label>
+            <textarea name="question3" required class="form-control"
+                rows="2">AIなどは普段使用していますが、使用している場合はどういったことに使っているかを教えてください</textarea>
+        </div>
+
+        <button type="submit" class="btn btn-danger btn-lg" style="width: 100%;">架電実行</button>
+    </form>
+</div>
+{% endblock %}

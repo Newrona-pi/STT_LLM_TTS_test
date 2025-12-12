@@ -288,7 +288,82 @@ async def debug_create_test_call(session: Session = Depends(get_session)):
     else:
         # If calling fails (e.g. no creds even on server?), revert or show error
         # But we redirect to see the status "scheduled" (and maybe retry logic picks it up if it wasn't manual trigger, but manual trigger expects immediate)
-        return HTMLResponse("Call initiation failed. Check server logs/credentials.", status_code=500)
+@router.get("/debug/call", response_class=HTMLResponse, summary="デバッグ架電ページ", description="任意の番号と質問でテスト架電を行うフォームを表示します。")
+async def debug_call_page(request: Request):
+    return templates.TemplateResponse("admin/debug_call.html", {
+        "request": request,
+        "active_page": "debug"
+    })
+
+@router.post("/debug/call", summary="デバッグ架電実行")
+async def debug_call_action(
+    phone: str = Form(...),
+    question1: str = Form(...),
+    question2: str = Form(...),
+    question3: str = Form(...),
+    session: Session = Depends(get_session)
+):
+    # 1. Setup Question Set
+    qs_name = "Debug_Manual_Call"
+    q_set = session.exec(select(QuestionSet).where(QuestionSet.name == qs_name)).first()
+    if not q_set:
+        q_set = QuestionSet(name=qs_name, description="手動デバッグ用")
+        session.add(q_set)
+        session.commit()
+        session.refresh(q_set)
+    
+    # 2. Register Questions
+    # Clear old
+    existing_qs = session.exec(select(Question).where(Question.set_id == q_set.id)).all()
+    for eq in existing_qs:
+        session.delete(eq)
+    session.commit()
+    
+    # Add new
+    q_texts = [question1, question2, question3]
+    for i, txt in enumerate(q_texts):
+        if txt.strip():
+            session.add(Question(set_id=q_set.id, text=txt, order=i+1))
+    session.commit()
+    
+    # 3. Setup Candidate
+    # Normalize phone: remove hyphens for consistency if needed, but Twilio handles most
+    clean_phone = phone.replace("-", "").replace(" ", "")
+    
+    candidate = session.exec(select(Candidate).where(Candidate.phone == clean_phone)).first()
+    if not candidate:
+        import uuid
+        token = str(uuid.uuid4())
+        candidate = Candidate(name=f"Debug User ({clean_phone})", phone=clean_phone, email="debug@example.com", token=token, question_set_id=q_set.id)
+        session.add(candidate)
+    else:
+        candidate.question_set_id = q_set.id
+        candidate.name = f"Debug User ({clean_phone})" # Update name to indicate debug
+        session.add(candidate)
+    session.commit()
+    session.refresh(candidate)
+    
+    # 4. Schedule Interview (Now)
+    interview = Interview(
+        candidate_id=candidate.id,
+        reservation_time=datetime.datetime.utcnow(),
+        status="scheduled"
+    )
+    session.add(interview)
+    session.commit()
+    session.refresh(interview)
+    
+    # 5. Call
+    sid = make_outbound_call(clean_phone, interview.id)
+    
+    if sid:
+        interview.status = "calling"
+        session.add(interview)
+        session.commit()
+        # Redirect to interview detail to see logs
+        return RedirectResponse(url=f"/admin/interviews_ui/{interview.id}", status_code=303)
+    else:
+        return HTMLResponse(f"<h3>Call Failed</h3><p>Could not initiate call to {clean_phone}. Check server logs.</p><a href='/admin/debug/call'>Back</a>", status_code=500)
 
 @router.get("/interviews_ui/{id}", response_class=HTMLResponse)
 async def interview_detail_ui(request: Request, id: int, session: Session = Depends(get_session)):
