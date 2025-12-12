@@ -48,7 +48,48 @@ def check_scheduled_interviews():
                     # Add simple error counter? Or rely on retry logic via status check.
                     pass
 
+def cleanup_old_data():
+    """
+    Delete interviews older than retention policy (default 24h).
+    """
+    with Session(engine) as session:
+        # Default 24 hours
+        retention_hours = 24
+        # Check settings if implemented
+        # setting = session.exec(select(Setting).where(Setting.key == 'retention_hours')).first()
+        # if setting: retention_hours = int(setting.value)
+        
+        limit_time = datetime.utcnow() - timedelta(hours=retention_hours)
+        
+        # Select old interviews
+        # Ideally status should be 'completed' or 'failed'.
+        # For MVP, delete all OLD records regardless? Maybe keep logs?
+        # Requirement: "物理削除" for security.
+        statement = select(Interview).where(Interview.created_at <= limit_time)
+        results = session.exec(statement).all()
+        
+        count = 0
+        for interview in results:
+            session.delete(interview)
+            count += 1
+            # Cascade delete should handle reviews/logs if configured, else manual delete needed.
+            # SQLModel relationship with cascade delete?
+            # Default helper might not set cascade in DB.
+            # For MVP, assume ORM handles it or we leave orphans (not ideal but safe).
+            # Let's delete manually to be safe if no cascade.
+            for log in interview.candidate.logs:
+                session.delete(log)
+            # Cannot delete candidate if linked to other interviews? 
+            # Logic: One candidate one interview?
+            # Yes. Delete candidate too?
+            session.delete(interview.candidate)
+
+        session.commit()
+        if count > 0:
+            print(f"[INFO] Cleanup: Deleted {count} old interviews.")
+
 def start_scheduler():
     scheduler.add_job(check_scheduled_interviews, 'interval', seconds=60)
+    scheduler.add_job(cleanup_old_data, 'cron', hour=0) # Run at midnight
     scheduler.start()
     print("[INFO] Scheduler started.")

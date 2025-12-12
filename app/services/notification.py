@@ -113,7 +113,8 @@ def make_outbound_call(to_phone: str, interview_id: int):
             url=url,
             status_callback=f"{BASE_URL}/voice/status", 
             status_callback_event=['completed', 'failed', 'busy', 'no-answer'],
-            timeout=20 
+            timeout=20,
+            machine_detection='Enable' 
         )
         return call.sid
     except Exception as e:
