@@ -253,7 +253,9 @@ async def call_status(
                      
     elif CallStatus in ["busy", "no-answer", "failed"]:
         # Retry Logic (Initial connection failure)
-        if interview.retry_count < 3:
+        # Update: User requested NO retry (1 call only)
+        # if interview.retry_count < 3: (Original)
+        if interview.retry_count < 0: # Disabled
             interview.retry_count += 1
             interview.status = "scheduled"
             interview.reservation_time = datetime.datetime.utcnow() + timedelta(minutes=2)
