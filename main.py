@@ -31,7 +31,8 @@ SYSTEM_MESSAGE = (
     "【重要な注意事項】"
     "・ユーザーが完全に話し終わるまで待ってください。途中で話し始めないでください。"
     "・日付を聞いたら、必ず復唱して確認してください（例：12月19日木曜日ですね）"
-    "・「明日」「来週」などの相対的な日付表現を聞いたら、まず calculate_date ツールで正確な日付に変換してください"
+    "・「明日」「来週」「明後日」「X日後」などの相対的な日付は、絶対に自分で計算せず、必ず calculate_date ツールを使ってください"
+    "・土日（土曜日、日曜日）は絶対に提案しないでください。担当者は土日休みです"
     "・時間について「夕方」「午後」「朝」などの曖昧な表現を聞いたら、具体的な時間を聞き返してください（例：「夕方でしたら、何時頃がよろしいでしょうか」）"
     ""
     "【会話の流れ】"
@@ -47,9 +48,9 @@ SYSTEM_MESSAGE = (
     "   → 「それでは、〇月〇日〇時頃に改めてご連絡させていただきます。失礼いたします。」then end_call"
     ""
     "3. 日付の処理："
-    "   - 相対的な表現（明日、来週など）→ まず calculate_date で変換"
-    "   - 具体的な日付を復唱確認"
-    "   - check_availability で担当者のスケジュールを確認"
+    "   - 相対的な表現（明日、来週、明後日など）→ 【重要】絶対に自分で計算せず、必ず calculate_date ツールを呼び出す"
+    "   - calculate_dateの結果を復唱確認"
+    "   - check_availability で担当者のスケジュールを確認（土日は自動的にNGが返る）"
     ""
     "4. スケジュール確認の結果："
     "   - 空いている → 時間を聞く（1時間単位、例：13時、14時）"
@@ -469,14 +470,19 @@ async def voice_stream(websocket: WebSocket):
                                     weekday = check_date.weekday()  # 0=月, 6=日
                                     day_name = ["月", "火", "水", "木", "金", "土", "日"][weekday]
                                     
-                                    if weekday >= 5:  # 土日
+                                    print(f"[DEBUG] Date: {date}, Weekday: {weekday}, Day name: {day_name}")
+                                    
+                                    if weekday >= 5:  # 土日（5=土, 6=日）
+                                        print(f"[INFO] Weekend detected: {date} is {day_name}")
                                         result = f"{date}（{day_name}曜日）は担当者がお休みをいただいております。平日でご都合の良い日はございますか。"
                                     else:
+                                        print(f"[INFO] Weekday OK: {date} is {day_name}")
                                         if time_slot:
                                             result = f"{date}（{day_name}曜日） {time_slot}は空いております。"
                                         else:
                                             result = f"{date}（{day_name}曜日）は対応可能です。"
-                                except:
+                                except Exception as e:
+                                    print(f"[ERROR] Date parsing failed for {date}: {e}")
                                     result = "日付の形式を確認できませんでした。YYYY-MM-DD形式で日付を指定してください。"
                                 
                                 await openai_ws.send(json.dumps({
