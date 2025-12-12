@@ -5,9 +5,17 @@
     <h1>面接履歴</h1>
 </div>
 
-<h2 class="mb-2" style="font-size: 1.25rem; color: #333;">📅 面接スケジュール (本日・未来)</h2>
-<div class="card table-container mb-4">
-    {% if scheduled_interviews %}
+<div class="header mb-4">
+    <h1>面接履歴</h1>
+</div>
+
+<!-- Tabs (Simple Anchors or JS, let's use Sections for simplicity as requested "Tabs or Sections") -->
+<!-- User said "3つのタブに分け... 本日　未来　過去履歴" -->
+<!-- Using sections with clear headers is safer than JS tabs for MVP, avoiding JS issues -->
+
+<h2 class="mb-2 section-title" style="color: #d35400;">🔥 本日の予定 ({{ today_interviews|length }}件)</h2>
+<div class="card table-container mb-4" style="border-top: 4px solid #d35400;">
+    {% if today_interviews %}
     <table>
         <thead>
             <tr>
@@ -15,31 +23,57 @@
                 <th>候補者名</th>
                 <th>予約日時</th>
                 <th>ステータス</th>
-                <th>リトライ回数</th>
                 <th>詳細</th>
             </tr>
         </thead>
         <tbody>
-            {% for interview in scheduled_interviews %}
+            {% for interview in today_interviews %}
             <tr>
                 <td>{{ interview.id }}</td>
                 <td>{{ interview.candidate.name }}</td>
-                <td>{{ interview.reservation_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ interview.reservation_time.strftime('%H:%M') }}</td>
                 <td><span class="badge badge-{{ interview.status }}">{{ interview.status }}</span></td>
-                <td>{{ interview.retry_count }}</td>
-                <td>
-                    <a href="/admin/interviews_ui/{{ interview.id }}" class="btn btn-primary btn-sm">詳細</a>
-                </td>
+                <td><a href="/admin/interviews_ui/{{ interview.id }}" class="btn btn-primary btn-sm">詳細</a></td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
-    <p class="p-4 text-muted">予定されている面接はありません。</p>
+    <p class="p-4 text-muted">本日の面接予定はありません。</p>
     {% endif %}
 </div>
 
-<h2 class="mb-2" style="font-size: 1.25rem; color: #666;">📜 過去の面接 (履歴)</h2>
+<h2 class="mb-2 section-title" style="color: #2980b9;">📅 未来の予約 ({{ future_interviews|length }}件)</h2>
+<div class="card table-container mb-4" style="border-top: 4px solid #2980b9;">
+    {% if future_interviews %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>候補者名</th>
+                <th>予約日時</th>
+                <th>ステータス</th>
+                <th>詳細</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for interview in future_interviews %}
+            <tr>
+                <td>{{ interview.id }}</td>
+                <td>{{ interview.candidate.name }}</td>
+                <td>{{ interview.reservation_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><span class="badge badge-{{ interview.status }}">{{ interview.status }}</span></td>
+                <td><a href="/admin/interviews_ui/{{ interview.id }}" class="btn btn-secondary btn-sm">詳細</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="p-4 text-muted">未来の予約はありません。</p>
+    {% endif %}
+</div>
+
+<h2 class="mb-2 section-title" style="color: #7f8c8d;">📜 過去の履歴 ({{ past_interviews|length }}件)</h2>
 <div class="card table-container">
     {% if past_interviews %}
     <table>
@@ -49,7 +83,6 @@
                 <th>候補者名</th>
                 <th>予約日時</th>
                 <th>ステータス</th>
-                <th>リトライ回数</th>
                 <th>詳細</th>
             </tr>
         </thead>
@@ -60,10 +93,7 @@
                 <td>{{ interview.candidate.name }}</td>
                 <td>{{ interview.reservation_time.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td><span class="badge badge-{{ interview.status }}">{{ interview.status }}</span></td>
-                <td>{{ interview.retry_count }}</td>
-                <td>
-                    <a href="/admin/interviews_ui/{{ interview.id }}" class="btn btn-secondary btn-sm">詳細</a>
-                </td>
+                <td><a href="/admin/interviews_ui/{{ interview.id }}" class="btn btn-secondary btn-sm">詳細</a></td>
             </tr>
             {% endfor %}
         </tbody>

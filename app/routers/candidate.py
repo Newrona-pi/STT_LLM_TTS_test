@@ -14,7 +14,7 @@ router = APIRouter(tags=["candidate"])
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-@router.get("/book", response_class=HTMLResponse)
+@router.get("/book", response_class=HTMLResponse, summary="予約ページ表示", description="トークンを使用して予約画面を表示します。")
 def show_booking_page(request: Request, token: str, session: Session = Depends(get_session)):
     candidate = session.exec(select(Candidate).where(Candidate.token == token)).first()
     if not candidate:
@@ -30,7 +30,7 @@ def show_booking_page(request: Request, token: str, session: Session = Depends(g
         "token": token
     })
 
-@router.post("/book", response_class=HTMLResponse)
+@router.post("/book", response_class=HTMLResponse, summary="予約確定", description="日時を指定して予約を確定します。")
 def submit_booking(
     request: Request,
     token: str = Form(...),

@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent # points to 'app' directory
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/dashboard", response_class=HTMLResponse, summary="ダッシュボード表示", description="管理者ダッシュボードを表示します。")
 async def dashboard(request: Request, session: Session = Depends(get_session)):
     # Stats
     total_candidates = session.exec(select(Candidate)).all()
@@ -43,7 +43,7 @@ async def help_page(request: Request):
         "active_page": "help"
     })
 
-@router.get("/candidates_ui", response_class=HTMLResponse)
+@router.get("/candidates_ui", response_class=HTMLResponse, summary="候補者一覧表示", description="登録済みの候補者一覧を表示します。")
 async def list_candidates_ui(request: Request, session: Session = Depends(get_session)):
     candidates = session.exec(select(Candidate)).all()
     base_url = os.environ.get("BASE_URL", str(request.base_url).rstrip("/"))
@@ -55,7 +55,7 @@ async def list_candidates_ui(request: Request, session: Session = Depends(get_se
         "active_page": "candidates"
     })
 
-@router.post("/candidates_ui/upload")
+@router.post("/candidates_ui/upload", summary="候補者CSV一括登録", description="CSVファイルをアップロードして候補を一括登録します。")
 async def upload_candidates_ui(file: UploadFile = File(...), session: Session = Depends(get_session)):
     # Reuse logic or copy-paste (Importing logic from admin.py is cleaner but function signature varies)
     # Let's simple copy logic for MVP to avoid circular dependencies if imports are messy
@@ -87,23 +87,93 @@ async def upload_candidates_ui(file: UploadFile = File(...), session: Session = 
     session.commit()
     return RedirectResponse(url="/admin/candidates_ui", status_code=303)
 
-@router.post("/candidates_ui/create")
+    })
+
+@router.post("/candidates_ui/create", summary="候補者手動登録", description="フォームから候補者を1件登録し、任意で招待メールを送信します。")
 async def create_candidate_ui(
     name: str = Form(...),
+    kana: str = Form(None),
     phone: str = Form(...),
     email: str = Form(...),
+    send_invite: bool = Form(False),
     session: Session = Depends(get_session)
 ):
     import uuid
-    # Logic similar to upload but for single entry
+    from datetime import datetime
+    from app.services.notification import send_email
+    
     token = str(uuid.uuid4())
-    # Default question set logic if needed, or None
-    candidate = Candidate(name=name, phone=phone, email=email, token=token)
+    candidate = Candidate(
+        name=name, 
+        kana=kana, 
+        phone=phone, 
+        email=email, 
+        token=token,
+        token_issued_at=datetime.utcnow() if send_invite else None,
+        token_sent_type="manual_form" if send_invite else "none"
+    )
     session.add(candidate)
     session.commit()
+    session.refresh(candidate)
+    
+    if send_invite:
+        base_url = os.environ.get("BASE_URL")
+        # Fallback if BASE_URL not set (dev)
+        if not base_url: 
+             # We can't easily get request here without passing it, but let's try env first
+             pass
+             
+        # Construct simplified message
+        invite_url = f"{base_url}/book?token={token}" if base_url else f"(Setup BASE_URL)/book?token={token}"
+        
+        subject = "【面接予約】AI面接のご案内"
+        body = f"{name}様\n\nAI一次面接のご案内です。\n以下のURLよりご都合の良い日時をご予約ください。\n\n予約URL: {invite_url}\n\nよろしくお願いいたします。"
+        
+        send_email(candidate.email, subject, body, candidate.id, session)
+        
     return RedirectResponse(url="/admin/candidates_ui", status_code=303)
 
-@router.get("/interviews_ui", response_class=HTMLResponse)
+@router.get("/candidates_ui/{id}", response_class=HTMLResponse)
+async def candidate_detail_ui(request: Request, id: int, session: Session = Depends(get_session)):
+    candidate = session.get(Candidate, id)
+    if not candidate:
+        return HTMLResponse("Candidate not found", status_code=404)
+        
+    base_url = os.environ.get("BASE_URL", str(request.base_url).rstrip("/"))
+    
+    return templates.TemplateResponse("admin/candidate_detail.html", {
+        "request": request,
+        "candidate": candidate,
+        "base_url": base_url,
+        "active_page": "candidates"
+    })
+
+@router.post("/candidates_ui/{id}/resend_token")
+async def resend_token(id: int, request: Request, session: Session = Depends(get_session)):
+    import datetime
+    from app.services.notification import send_email
+    
+    candidate = session.get(Candidate, id)
+    if not candidate:
+        return HTMLResponse("Candidate not found", status_code=404)
+        
+    base_url = os.environ.get("BASE_URL", str(request.base_url).rstrip("/"))
+    invite_url = f"{base_url}/book?token={candidate.token}"
+    
+    subject = "【再送】AI面接のご案内"
+    body = f"{candidate.name}様\n\n(再送) AI一次面接のご案内です。\n以下のURLよりご都合の良い日時をご予約ください。\n\n予約URL: {invite_url}\n\nよろしくお願いいたします。"
+    
+    sent = send_email(candidate.email, subject, body, candidate.id, session)
+    
+    if sent:
+        candidate.token_issued_at = datetime.datetime.utcnow()
+        candidate.token_sent_type = "manual_resend"
+        session.add(candidate)
+        session.commit()
+    
+    return RedirectResponse(url=f"/admin/candidates_ui/{id}", status_code=303)
+
+@router.get("/interviews_ui", response_class=HTMLResponse, summary="面接履歴表示", description="面接の予約状況と履歴を表示します。")
 async def list_interviews_ui(request: Request, session: Session = Depends(get_session)):
     import datetime
     # Get all interviews sorted by time (descending)
@@ -119,32 +189,38 @@ async def list_interviews_ui(request: Request, session: Session = Depends(get_se
     # Let's define "Past" as "reservation_time.date() < today.date()".
     # And "Future/Today" as "reservation_time.date() >= today.date()".
     
+    # Split interviews
+    now = datetime.datetime.now()
     today = now.date()
     
-    scheduled_interviews = []
+    today_interviews = []
+    future_interviews = []
     past_interviews = []
     
     for i in interviews:
-        # parsed datetime might be needed if it's string, but SQLModel usually handles it.
-        # Check if i.reservation_time is datetime
         r_time = i.reservation_time
         if isinstance(r_time, str):
             r_time = datetime.datetime.fromisoformat(r_time)
             
-        if r_time.date() >= today:
-            scheduled_interviews.append(i)
+        r_date = r_time.date()
+        
+        if r_date == today:
+            today_interviews.append(i)
+        elif r_date > today:
+            future_interviews.append(i)
         else:
             past_interviews.append(i)
             
-    # Sort scheduled by ASC (nearest first)
-    scheduled_interviews.sort(key=lambda x: x.reservation_time)
-    # Sort past by DESC (most recent first) - already sorted by query but filtering might mess up if mixed
+    # Sort
+    today_interviews.sort(key=lambda x: x.reservation_time)
+    future_interviews.sort(key=lambda x: x.reservation_time)
     past_interviews.sort(key=lambda x: x.reservation_time, reverse=True)
 
     return templates.TemplateResponse("admin/interviews_list.html", {
         "request": request,
-        "interviews": interviews, # Keeping this for legacy if needed, but template will use new ones
-        "scheduled_interviews": scheduled_interviews,
+        "interviews": interviews,
+        "today_interviews": today_interviews,
+        "future_interviews": future_interviews,
         "past_interviews": past_interviews,
         "active_page": "interviews"
     })

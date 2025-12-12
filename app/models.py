@@ -28,11 +28,14 @@ class Candidate(SQLModel, table=True):
     __tablename__ = "candidates"
     id: int = Field(default=None, primary_key=True)
     name: str
+    kana: Optional[str] = None # Furigana
     phone: str
     email: str
     token: str = Field(index=True, unique=True)
     status: str = Field(default="pending") # pending, automated, interviewed, rejected
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    token_issued_at: Optional[datetime] = None
+    token_sent_type: Optional[str] = None # 'auto', 'manual', 'none'
     question_set_id: Optional[int] = Field(default=None, foreign_key="question_sets.id")
     
     interviews: List["Interview"] = Relationship(back_populates="candidate")

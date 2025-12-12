@@ -18,6 +18,11 @@
                 style="width: 100%; padding: 8px; margin-bottom: 10px;">
         </div>
         <div class="form-group">
+            <label>フリガナ (任意)</label>
+            <input type="text" name="kana" placeholder="ヤマダ タロウ" class="form-control"
+                style="width: 100%; padding: 8px; margin-bottom: 10px;">
+        </div>
+        <div class="form-group">
             <label>電話番号</label>
             <input type="text" name="phone" required placeholder="+819012345678" class="form-control"
                 style="width: 100%; padding: 8px; margin-bottom: 10px;">
@@ -26,6 +31,12 @@
             <label>メールアドレス</label>
             <input type="email" name="email" required placeholder="example@email.com" class="form-control"
                 style="width: 100%; padding: 8px; margin-bottom: 10px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" name="send_invite" value="true">
+                <span>登録と同時に予約案内メールを送信する</span>
+            </label>
         </div>
         <div class="flex gap-2">
             <button type="submit" class="btn btn-primary">登録</button>
@@ -66,7 +77,8 @@
             {% for candidate in candidates %}
             <tr>
                 <td>{{ candidate.id }}</td>
-                <td>{{ candidate.name }}</td>
+                <td><a href="/admin/candidates_ui/{{ candidate.id }}"
+                        style="font-weight: bold; text-decoration: underline;">{{ candidate.name }}</a></td>
                 <td>{{ candidate.phone }}</td>
                 <td><span class="badge badge-{{ candidate.status }}">{{ candidate.status }}</span></td>
                 <td style="font-family: monospace; font-size: 0.85rem;">

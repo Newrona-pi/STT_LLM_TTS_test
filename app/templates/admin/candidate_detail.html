@@ -1,0 +1,97 @@
+{% extends "admin/layout.html" %}
+
+{% block content %}
+<div class="header mb-4 flex justify-between">
+    <h1>候補者詳細: {{ candidate.name }}</h1>
+    <a href="/admin/candidates_ui" class="btn btn-secondary">一覧に戻る</a>
+</div>
+
+<div class="card mb-4">
+    <h2>基本情報</h2>
+    <div class="grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+            <p><strong>ID:</strong> {{ candidate.id }}</p>
+            <p><strong>氏名:</strong> {{ candidate.name }}</p>
+            <p><strong>フリガナ:</strong> {{ candidate.kana or '-' }}</p>
+            <p><strong>電話番号:</strong> {{ candidate.phone }}</p>
+            <p><strong>メールアドレス:</strong> {{ candidate.email }}</p>
+            <p><strong>ステータス:</strong> <span class="badge badge-{{ candidate.status }}">{{ candidate.status }}</span>
+            </p>
+            <p><strong>登録日:</strong> {{ candidate.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        </div>
+        <div>
+            <h3>予約トークン情報</h3>
+            <p><strong>トークン:</strong> <code>{{ candidate.token }}</code></p>
+            <p><strong>予約URL:</strong> <a href="{{ base_url }}/book?token={{ candidate.token }}" target="_blank">{{
+                    base_url }}/book?token={{ candidate.token }}</a></p>
+            <p><strong>最終発行日:</strong> {{ candidate.token_issued_at.strftime('%Y-%m-%d %H:%M') if
+                candidate.token_issued_at else '-' }}</p>
+            <p><strong>発行タイプ:</strong> {{ candidate.token_sent_type or '-' }}</p>
+
+            <form action="/admin/candidates_ui/{{ candidate.id }}/resend_token" method="post" class="mt-4"
+                onsubmit="return confirm('本当に予約案内メールを再送しますか？');">
+                <button type="submit" class="btn btn-primary">予約メールを再送する (トークン発行)</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <h2>通信ログ</h2>
+    {% if candidate.logs %}
+    <table>
+        <thead>
+            <tr>
+                <th>日時</th>
+                <th>タイプ</th>
+                <th>方向</th>
+                <th>ステータス</th>
+                <th>エラー詳細</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in candidate.logs %}
+            <tr>
+                <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ log.type }}</td>
+                <td>{{ log.direction }}</td>
+                <td>{{ log.status }}</td>
+                <td class="text-error">{{ log.error_message or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">通信ログはありません。</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>面接履歴</h2>
+    {% if candidate.interviews %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>予約日時</th>
+                <th>ステータス</th>
+                <th>詳細</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for interview in candidate.interviews %}
+            <tr>
+                <td>{{ interview.id }}</td>
+                <td>{{ interview.reservation_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ interview.status }}</td>
+                <td><a href="/admin/interviews_ui/{{ interview.id }}" class="btn btn-sm btn-primary">詳細</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">面接履歴はありません。</p>
+    {% endif %}
+</div>
+
+{% endblock %}
