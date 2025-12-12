@@ -5,7 +5,9 @@
     <h1>面接履歴</h1>
 </div>
 
-<div class="card table-container">
+<h2 class="mb-2" style="font-size: 1.25rem; color: #333;">📅 面接スケジュール (本日・未来)</h2>
+<div class="card table-container mb-4">
+    {% if scheduled_interviews %}
     <table>
         <thead>
             <tr>
@@ -18,7 +20,7 @@
             </tr>
         </thead>
         <tbody>
-            {% for interview in interviews %}
+            {% for interview in scheduled_interviews %}
             <tr>
                 <td>{{ interview.id }}</td>
                 <td>{{ interview.candidate.name }}</td>
@@ -32,5 +34,42 @@
             {% endfor %}
         </tbody>
     </table>
+    {% else %}
+    <p class="p-4 text-muted">予定されている面接はありません。</p>
+    {% endif %}
+</div>
+
+<h2 class="mb-2" style="font-size: 1.25rem; color: #666;">📜 過去の面接 (履歴)</h2>
+<div class="card table-container">
+    {% if past_interviews %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>候補者名</th>
+                <th>予約日時</th>
+                <th>ステータス</th>
+                <th>リトライ回数</th>
+                <th>詳細</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for interview in past_interviews %}
+            <tr>
+                <td>{{ interview.id }}</td>
+                <td>{{ interview.candidate.name }}</td>
+                <td>{{ interview.reservation_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><span class="badge badge-{{ interview.status }}">{{ interview.status }}</span></td>
+                <td>{{ interview.retry_count }}</td>
+                <td>
+                    <a href="/admin/interviews_ui/{{ interview.id }}" class="btn btn-secondary btn-sm">詳細</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="p-4 text-muted">過去の面接履歴はありません。</p>
+    {% endif %}
 </div>
 {% endblock %}

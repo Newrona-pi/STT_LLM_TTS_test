@@ -1,0 +1,55 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}システム説明{% endblock %}
+
+{% block content %}
+<div class="header mb-4">
+    <h1>システム利用ガイド</h1>
+</div>
+
+<div class="card mb-4">
+    <h2>1. システムの全体像</h2>
+    <p>このシステムは、以下の直感的なフローで動作します：</p>
+    <ol style="margin-left: 20px; line-height: 1.8;">
+        <li><strong>候補者登録</strong>: 管理者が候補者を登録します（CSVまたは手動）。</li>
+        <li><strong>トークン発行</strong>: 登録と同時に、予約用の「トークン（固有ID）」が自動発行されます。</li>
+        <li><strong>予約リンク通知</strong>: トークンが含まれた予約用URLを候補者に送ります。</li>
+        <li><strong>面接予約</strong>: 候補者がURLから日時を予約します。</li>
+        <li><strong>AI面接実行</strong>: 予約時間にAIから電話がかかります。</li>
+        <li><strong>結果確認</strong>: 録音と文字起こし結果が管理画面に反映されます。</li>
+    </ol>
+</div>
+
+<div class="card mb-4">
+    <h2>2. 各機能の説明</h2>
+    
+    <h3 class="mt-4">候補者一覧 (Candidates)</h3>
+    <p>面接を受ける候補者を管理する場所です。</p>
+    <ul>
+        <li><strong>新規登録</strong>: 「CSV登録」または「新規登録（1件）」から追加できます。</li>
+        <li><strong>予約リンク</strong>: 一覧に表示される「予約リンク」が、その候補者専用の予約ページです。これをコピーしてメール等で送ります。</li>
+    </ul>
+
+    <h3 class="mt-4">面接履歴 (Interviews)</h3>
+    <p>予約状況と面接結果を確認する場所です。</p>
+    <ul>
+        <li><strong>予定（未来/本日）</strong>: これから行われる面接、または本日の面接が表示されます。</li>
+        <li><strong>履歴（過去）</strong>: 過去に行われた面接が表示されます。</li>
+        <li><strong>詳細</strong>: 「詳細」ボタンを押すと、録音データの再生や文字起こしテキストを確認できます。</li>
+    </ul>
+
+    <h3 class="mt-4">APIドキュメントについて</h3>
+    <p>開発者向けの技術仕様書です。通常運用では使用しませんが、外部システム連携などの際に参照します。</p>
+</div>
+
+<div class="card">
+    <h2>3. よくある質問</h2>
+    <dl>
+        <dt><strong>Q. トークンはどこで発行できますか？</strong></dt>
+        <dd>A. 「候補者一覧」で候補者を登録すると自動的に発行されます。一覧の「予約リンク」に含まれています。</dd>
+        
+        <dt><strong>Q. ログが消えてしまいました。</strong></dt>
+        <dd>A. 現在のシステム構成（SQLite）では、新しいバージョンをデプロイすると過去のデータがリセットされる場合があります。本番運用時にはデータベースの設定を変更する必要があります。</dd>
+    </dl>
+</div>
+{% endblock %}

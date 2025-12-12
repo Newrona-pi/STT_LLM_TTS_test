@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, UploadFile, File
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
@@ -34,6 +34,13 @@ async def dashboard(request: Request, session: Session = Depends(get_session)):
         "request": request, 
         "stats": stats,
         "active_page": "dashboard"
+    })
+
+@router.get("/help", response_class=HTMLResponse)
+async def help_page(request: Request):
+    return templates.TemplateResponse("admin/help.html", {
+        "request": request,
+        "active_page": "help"
     })
 
 @router.get("/candidates_ui", response_class=HTMLResponse)
@@ -77,15 +84,68 @@ async def upload_candidates_ui(file: UploadFile = File(...), session: Session = 
             session.add(candidate)
     
     session.commit()
+    session.commit()
+    return RedirectResponse(url="/admin/candidates_ui", status_code=303)
+
+@router.post("/candidates_ui/create")
+async def create_candidate_ui(
+    name: str = Form(...),
+    phone: str = Form(...),
+    email: str = Form(...),
+    session: Session = Depends(get_session)
+):
+    import uuid
+    # Logic similar to upload but for single entry
+    token = str(uuid.uuid4())
+    # Default question set logic if needed, or None
+    candidate = Candidate(name=name, phone=phone, email=email, token=token)
+    session.add(candidate)
+    session.commit()
     return RedirectResponse(url="/admin/candidates_ui", status_code=303)
 
 @router.get("/interviews_ui", response_class=HTMLResponse)
 async def list_interviews_ui(request: Request, session: Session = Depends(get_session)):
     import datetime
+    # Get all interviews sorted by time (descending)
     interviews = session.exec(select(Interview).order_by(Interview.reservation_time.desc())).all()
+    
+    now = datetime.datetime.now()
+    
+    # Split into future (including today) and past
+    # Condition: Future/Today is reservation_time >= (Today 00:00:00) ??
+    # User said: "Today ~ Future" for Schedule, "Past" for History (yesterday and before).
+    # However, usually "Scheduled" means "Not yet happened". 
+    # But user specifically said "Today ~ Future reservation".
+    # Let's define "Past" as "reservation_time.date() < today.date()".
+    # And "Future/Today" as "reservation_time.date() >= today.date()".
+    
+    today = now.date()
+    
+    scheduled_interviews = []
+    past_interviews = []
+    
+    for i in interviews:
+        # parsed datetime might be needed if it's string, but SQLModel usually handles it.
+        # Check if i.reservation_time is datetime
+        r_time = i.reservation_time
+        if isinstance(r_time, str):
+            r_time = datetime.datetime.fromisoformat(r_time)
+            
+        if r_time.date() >= today:
+            scheduled_interviews.append(i)
+        else:
+            past_interviews.append(i)
+            
+    # Sort scheduled by ASC (nearest first)
+    scheduled_interviews.sort(key=lambda x: x.reservation_time)
+    # Sort past by DESC (most recent first) - already sorted by query but filtering might mess up if mixed
+    past_interviews.sort(key=lambda x: x.reservation_time, reverse=True)
+
     return templates.TemplateResponse("admin/interviews_list.html", {
         "request": request,
-        "interviews": interviews,
+        "interviews": interviews, # Keeping this for legacy if needed, but template will use new ones
+        "scheduled_interviews": scheduled_interviews,
+        "past_interviews": past_interviews,
         "active_page": "interviews"
     })
 
