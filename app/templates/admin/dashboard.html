@@ -1,0 +1,21 @@
+{% extends "admin/layout.html" %}
+
+{% block content %}
+<div class="header mb-4">
+    <h1>管理ダッシュボード</h1>
+    <p class="text-muted">AI一次面接システムの現在の状況を確認できます。</p>
+</div>
+
+<div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;">
+    <div class="card">
+        <h2>候補者数</h2>
+        <div style="font-size: 2.5rem; font-weight: 700; color: var(--primary);">{{ stats.total_candidates }}</div>
+        <a href="/admin/candidates_ui" class="btn btn-primary btn-sm mt-4">一覧を見る</a>
+    </div>
+    <div class="card">
+        <h2>本日の面接</h2>
+        <div style="font-size: 2.5rem; font-weight: 700;">{{ stats.today_interviews }}</div>
+        <a href="/admin/interviews_ui" class="btn btn-primary btn-sm mt-4">詳細を見る</a>
+    </div>
+</div>
+{% endblock %}

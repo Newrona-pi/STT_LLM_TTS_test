@@ -1,12 +1,16 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.database import create_db_and_tables
-from app.routers import admin, candidate, voice
+from app.routers import admin, candidate, voice, admin_view
 from app.services.scheduler import start_scheduler
 import os
 
 app = FastAPI(title="AI Interview System (Logic C)")
 
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 app.include_router(admin.router)
+app.include_router(admin_view.router)
 app.include_router(candidate.router)
 app.include_router(voice.router)
 

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}管理画面{% endblock %} - AI面接システム</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <div class="brand">AI Interview System</div>
+        <div class="nav-links">
+            <a href="/admin/dashboard" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">ダッシュボード</a>
+            <a href="/admin/candidates_ui"
+                class="nav-link {% if active_page == 'candidates' %}active{% endif %}">候補者一覧</a>
+            <a href="/admin/interviews_ui"
+                class="nav-link {% if active_page == 'interviews' %}active{% endif %}">面接履歴</a>
+            <a href="/docs" class="nav-link" target="_blank">APIドキュメント</a>
+        </div>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+
+</html>

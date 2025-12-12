@@ -1,0 +1,36 @@
+{% extends "admin/layout.html" %}
+
+{% block content %}
+<div class="header mb-4">
+    <h1>面接履歴</h1>
+</div>
+
+<div class="card table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>候補者名</th>
+                <th>予約日時</th>
+                <th>ステータス</th>
+                <th>リトライ回数</th>
+                <th>詳細</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for interview in interviews %}
+            <tr>
+                <td>{{ interview.id }}</td>
+                <td>{{ interview.candidate.name }}</td>
+                <td>{{ interview.reservation_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><span class="badge badge-{{ interview.status }}">{{ interview.status }}</span></td>
+                <td>{{ interview.retry_count }}</td>
+                <td>
+                    <a href="/admin/interviews_ui/{{ interview.id }}" class="btn btn-primary btn-sm">詳細</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

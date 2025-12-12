@@ -1,0 +1,54 @@
+{% extends "admin/layout.html" %}
+
+{% block content %}
+<div class="flex justify-between mb-4">
+    <h1>候補者管理</h1>
+    <button onclick="document.getElementById('uploadForm').style.display='block'" class="btn btn-primary">CSV登録</button>
+</div>
+
+<div id="uploadForm" class="card" style="display: none;">
+    <h2>候補者CSV登録</h2>
+    <p class="text-muted mb-4">CSVフォーマット: 氏名, 電話番号, メールアドレス, 質問セット名(任意)</p>
+    <form action="/admin/candidates_ui/upload" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+            <input type="file" name="file" accept=".csv" required>
+        </div>
+        <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary">アップロード</button>
+            <button type="button" onclick="document.getElementById('uploadForm').style.display='none'"
+                class="btn btn-danger">キャンセル</button>
+        </div>
+    </form>
+</div>
+
+<div class="card table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>氏名</th>
+                <th>電話番号</th>
+                <th>ステータス</th>
+                <th>予約URL (トークン)</th>
+                <th>質問セット</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for candidate in candidates %}
+            <tr>
+                <td>{{ candidate.id }}</td>
+                <td>{{ candidate.name }}</td>
+                <td>{{ candidate.phone }}</td>
+                <td><span class="badge badge-{{ candidate.status }}">{{ candidate.status }}</span></td>
+                <td style="font-family: monospace; font-size: 0.85rem;">
+                    <a href="{{ base_url }}/book?token={{ candidate.token }}" target="_blank"
+                        style="color: var(--primary);">予約リンク</a>
+                    <span class="text-muted">({{ candidate.token[:6] }}...)</span>
+                </td>
+                <td>{{ candidate.question_set_id or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
