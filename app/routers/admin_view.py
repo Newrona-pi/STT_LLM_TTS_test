@@ -5,8 +5,10 @@ from sqlmodel import Session, select
 from typing import List
 import os
 from app.database import get_session
-from app.models import Candidate, Interview, QuestionSet, InterviewReview
+from app.models import Candidate, Interview, QuestionSet, Question, InterviewReview
 from app.routers.admin import get_current_username
+from app.services.notification import make_outbound_call
+import datetime
 
 from pathlib import Path
 
@@ -222,6 +224,71 @@ async def list_interviews_ui(request: Request, session: Session = Depends(get_se
         "past_interviews": past_interviews,
         "active_page": "interviews"
     })
+
+@router.post("/debug/create_test_call", summary="デバッグ: テスト架電実行", description="指定された3つの質問でテストユーザー(03-6240-9373)に即時架電します。")
+async def debug_create_test_call(session: Session = Depends(get_session)):
+    # 1. Create/Get Question Set
+    qs_name = "クリエイター面接"
+    q_set = session.exec(select(QuestionSet).where(QuestionSet.name == qs_name)).first()
+    if not q_set:
+        q_set = QuestionSet(name=qs_name, description="デザイナー・クリエイター向け（テスト用）")
+        session.add(q_set)
+        session.commit()
+        session.refresh(q_set)
+    
+    # 2. Update Questions (Idempotent: delete existing for this set and recreate)
+    # Clear existing questions for this set
+    existing_qs = session.exec(select(Question).where(Question.set_id == q_set.id)).all()
+    for eq in existing_qs:
+        session.delete(eq)
+    session.commit()
+
+    questions_text = [
+        "弊社を希望した志望動機を教えてください",
+        "Photoshopやillustratorは使用したことがありますか、ある場合はどの程度出来るかを教えてください",
+        "AIなどは普段使用していますが、使用している場合はどういったことに使っているかを教えてください"
+    ]
+    
+    for i, text in enumerate(questions_text):
+        q = Question(set_id=q_set.id, text=text, order=i+1, max_duration=60)
+        session.add(q)
+    session.commit()
+
+    # 3. Create/Get Candidate
+    phone = "0362409373" # As requested
+    candidate = session.exec(select(Candidate).where(Candidate.phone == phone)).first()
+    if not candidate:
+        import uuid
+        token = str(uuid.uuid4())
+        candidate = Candidate(name="テスト ユーザー", kana="テスト ユーザー", phone=phone, email="test_call@example.com", token=token, question_set_id=q_set.id)
+        session.add(candidate)
+    else:
+        candidate.question_set_id = q_set.id
+        session.add(candidate)
+    session.commit()
+    session.refresh(candidate)
+
+    # 4. Create Interview (Scheduled NOW)
+    interview = Interview(
+        candidate_id=candidate.id,
+        reservation_time=datetime.datetime.utcnow(),
+        status="scheduled"
+    )
+    session.add(interview)
+    session.commit()
+    session.refresh(interview)
+    
+    # 5. Execute Call
+    sid = make_outbound_call(phone, interview.id)
+    if sid:
+        interview.status = "calling"
+        session.add(interview)
+        session.commit()
+        return RedirectResponse(url="/admin/interviews_ui", status_code=303)
+    else:
+        # If calling fails (e.g. no creds even on server?), revert or show error
+        # But we redirect to see the status "scheduled" (and maybe retry logic picks it up if it wasn't manual trigger, but manual trigger expects immediate)
+        return HTMLResponse("Call initiation failed. Check server logs/credentials.", status_code=500)
 
 @router.get("/interviews_ui/{id}", response_class=HTMLResponse)
 async def interview_detail_ui(request: Request, id: int, session: Session = Depends(get_session)):

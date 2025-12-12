@@ -21,7 +21,7 @@ if "postgresql" in DATABASE_URL:
 else:
     connect_args = {"check_same_thread": False}
 
-engine = create_engine(DATABASE_URL, echo=True, connect_args=connect_args)
+engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
 
 def get_session():
     with Session(engine) as session:
