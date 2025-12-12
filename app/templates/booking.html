@@ -1,0 +1,44 @@
+<!-- booking.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI面接予約</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+        .container { border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
+        input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; }
+        .note { font-size: 0.9em; color: #666; background: #f9f9f9; padding: 10px; border-left: 4px solid #007bff; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>AI一次面接 予約</h2>
+    <p>{{ candidate.name }} 様</p>
+    
+    <div class="note">
+        <strong>ご案内</strong><br>
+        ・一次面接はAIが実施します（対話形式、所要15分前後）。<br>
+        ・通話内容は録音・文字起こしされます。予めご了承ください。
+    </div>
+    
+    {% if existing_interview %}
+    <p>現在の予約: <strong>{{ existing_interview.reservation_time.strftime('%Y/%m/%d %H:%M') }}</strong></p>
+    <p>変更する場合は新しい日時を選択してください。</p>
+    {% endif %}
+    
+    <form action="/book" method="post">
+        <input type="hidden" name="token" value="{{ token }}">
+        <label>日付</label>
+        <input type="date" name="date" required>
+        <label>時間</label>
+        <input type="time" name="time" step="1800" required>
+        <button type="submit">予約を確定する</button>
+    </form>
+</div>
+</body>
+</html>
+
+<!-- success.html -->
+<!-- ... separate file call for success/error to allow write_to_file cleanly? No, I can write multiple if content allows, but tool is single file. I will write them sequentially. -->

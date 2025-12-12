@@ -1,7 +1,14 @@
 fastapi
 uvicorn
+python-multipart
 python-dotenv
-openai
+sqlmodel
+alembic
+psycopg2-binary
+requests
+jinja2
 twilio
-httpx
-websockets>=12.0
+sendgrid
+openai
+apscheduler
+pytz

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>予約完了</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .success {
+            color: green;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+
+<body>
+    <h2 class="success">予約が完了しました</h2>
+    <p>{{ candidate.name }} 様</p>
+    <p>以下の日時で承りました。</p>
+    <h3>{{ reservation_time.strftime('%Y/%m/%d %H:%M') }}</h3>
+    <p>当日はAIからお電話いたします。<br>電波の良い場所でお待ちください。</p>
+    <p>確認のメールとSMSをお送りしました。</p>
+</body>
+
+</html>
