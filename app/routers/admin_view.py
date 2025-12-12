@@ -87,8 +87,6 @@ async def upload_candidates_ui(file: UploadFile = File(...), session: Session = 
     session.commit()
     return RedirectResponse(url="/admin/candidates_ui", status_code=303)
 
-    })
-
 @router.post("/candidates_ui/create", summary="候補者手動登録", description="フォームから候補者を1件登録し、任意で招待メールを送信します。")
 async def create_candidate_ui(
     name: str = Form(...),
