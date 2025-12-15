@@ -1,8 +1,5 @@
 # Logic C: AI一次面接システム (MVP)
 
-## Base URL
-**Production**: `https://web-production-11c55.up.railway.app`
-
 ## 概要
 AIが自動で一次面接を行うシステムです。
 候補者が予約日時を選択すると、指定時刻にシステムから電話がかかってきます。
