@@ -25,7 +25,8 @@ async def start_twilio_recording(call_sid: str):
     if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
         print("[WARN] Twilio Credentials missing for recording.")
         return
-    await asyncio.sleep(2) # Give it a moment to connect
+    # Wait a bit to ensure call is established
+    await asyncio.sleep(1)
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         # Using 'dual' to record speaker and listener separately
@@ -64,33 +65,58 @@ async def start_call(
         session.add(interview)
         session.commit()
     
-    # Start Recording (if CallSid present - usually is)
-    if CallSid:
-        background_tasks.add_task(start_twilio_recording, CallSid)
+    # NOTE: Recording is now started inside WebSocket 'start' event to avoid 400 race conditions.
 
     resp = VoiceResponse()
     resp.pause(length=1)
     connect = Connect()
     # Construct WSS URL
-    # Note: Twilio requires public hostname. BASE_URL should be set in env.
-    wss_url = f"wss://{BASE_URL}/voice/stream?interview_id={interview_id}"
+    # Using query param for interview_id
+    wss_url = f"wss://{BASE_URL}/voice/stream?interview_id={interview.id}"
     connect.stream(url=wss_url)
     resp.append(connect)
     
     return Response(content=str(resp), media_type="application/xml")
 
+@router.post("/status")
+async def call_status(CallSid: str = Form(None), CallStatus: str = Form(None)):
+    """Callback for Call Status updates (prevents 404)."""
+    if CallStatus:
+        print(f"[INFO] Call {CallSid} Status: {CallStatus}")
+    return Response(status_code=200)
+
 @router.websocket("/stream")
-async def websocket_endpoint(websocket: WebSocket, interview_id: int):
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for Twilio Media Stream <-> OpenAI Realtime API.
+    Manually parses interview_id to avoid 403 Forbidden from dependency validation.
+    """
     await websocket.accept()
     
+    # 1. Parse interview_id safely
+    try:
+        interview_id_str = websocket.query_params.get("interview_id")
+        if not interview_id_str:
+            print("[WARN] WebSocket missing interview_id")
+            await websocket.close()
+            return
+        interview_id = int(interview_id_str)
+    except Exception as e:
+        print(f"[WARN] Invalid interview_id: {e}")
+        await websocket.close()
+        return
+
     from app.database import engine
     # Use a fresh session for this connection
     with Session(engine) as session:
         interview = session.get(Interview, interview_id)
         if not interview:
+            print(f"[WARN] Interview {interview_id} not found")
             await websocket.close()
             return
         
+        print(f"[INFO] WebSocket Start. Interview ID: {interview_id}")
+
         # --- State Variables ---
         state = {
             "stage": "intro", # intro, time_check, main_qa, reverse_qa, ending
@@ -108,12 +134,7 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
                  if state["questions"][state["q_index"]]["text"] == q_text:
                      q_id = state["questions"][state["q_index"]]["id"]
             
-            # Use 'full recording' placeholder or logic
-            # Twilio Recording URL is usually /Accounts/{AC}/Calls/{CallSid}/Recordings.json
-            # We don't have exact URL yet.
-            
             # 1. Text Correction (Simple Rule-based)
-            # Example: "死亡動機" -> "志望動機"
             corrected_text = a_text.replace("死亡動機", "志望動機")
             
             # 2. Compliance Check
@@ -186,6 +207,14 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
                             }))
                         elif data['event'] == 'start':
                             state["stream_sid"] = data['start']['streamSid']
+                            call_sid = data['start'].get('callSid')
+                            
+                            print(f"[INFO] Stream started: {state['stream_sid']} (Call: {call_sid})")
+
+                            # Start Recording Here (Call is active)
+                            if call_sid:
+                                asyncio.create_task(start_twilio_recording(call_sid))
+
                             # Start Intro - Strict Instructions
                             await openai_ws.send(json.dumps({
                                 "type": "response.create",
@@ -200,7 +229,9 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
                                 }
                             }))
                 except WebSocketDisconnect:
-                    pass
+                    print("[INFO] Twilio Disconnected")
+                except Exception as e:
+                    print(f"[ERROR] Twilio Receiver: {e}")
 
             async def openai_receiver():
                 try:
@@ -285,8 +316,6 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
                                         }))
                                     else:
                                         # Log Reverse QA
-                                        # We save this as a Q: "Question from candidate" A: full_text
-                                        # Or better, Q: "Reverse QA", A: full_text
                                         save_qa_log("逆質問", full_text)
                                         
                                         # Repeat topic
@@ -300,4 +329,3 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
                     print(f"[ERROR] OpenAI WS: {e}")
 
             await asyncio.gather(twilio_receiver(), openai_receiver())
-
