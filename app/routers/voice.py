@@ -138,7 +138,7 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
             print(f"[LOG] Saved Review: {q_text} -> {corrected_text} (Compliant: {not is_compliant_issue})")
 
         # --- OpenAI Connection ---
-        openai_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+        openai_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
         openai_headers = {
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "OpenAI-Beta": "realtime=v1"
@@ -276,7 +276,12 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
                                             "response": {"instructions": "「本日の面接は以上となります。合否の結果は、7営業日以内に応募サイトよりご連絡いたします。お忙しい中、お時間をいただきありがとうございました。失礼いたします。」"}
                                         }))
                                     else:
-                                        # Log Reverse QA?
+                                    else:
+                                        # Log Reverse QA
+                                        # We save this as a Q: "Question from candidate" A: full_text
+                                        # Or better, Q: "Reverse QA", A: full_text
+                                        save_qa_log("逆質問", full_text)
+                                        
                                         # Repeat topic
                                         state["current_transcript"] = [] 
                                         await openai_ws.send(json.dumps({
