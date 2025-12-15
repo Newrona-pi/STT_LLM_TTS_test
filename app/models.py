@@ -53,6 +53,10 @@ class Interview(SQLModel, table=True):
     last_completed_q_id: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
+    # New fields for Logic C Flow
+    current_stage: str = Field(default="scheduled") # scheduled, greeting, main_qa, reverse_qa, ending
+    reverse_qa_logs: List[dict] = Field(sa_column=Column(JSON), default=[])
+    
     candidate: Candidate = Relationship(back_populates="interviews")
     reviews: List["InterviewReview"] = Relationship(back_populates="interview")
 
