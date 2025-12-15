@@ -12,4 +12,4 @@ sendgrid
 openai
 apscheduler
 pytz
-websockets
+websockets>=13.0

@@ -233,7 +233,9 @@ async def websocket_endpoint(websocket: WebSocket):
             "OpenAI-Beta": "realtime=v1"
         }
         
-        async with websockets.connect(openai_url, extra_headers=openai_headers) as openai_ws:
+        # [Authentication] Using 'additional_headers' for websockets > 10.0 (v14/15+)
+        async with websockets.connect(openai_url, additional_headers=openai_headers) as openai_ws:
+            print(f"[INFO] OpenAI Realtime API Connected!")
             
             # 1. Initialize Session
             session_config = {
