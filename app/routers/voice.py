@@ -138,7 +138,12 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
             print(f"[LOG] Saved Review: {q_text} -> {corrected_text} (Compliant: {not is_compliant_issue})")
 
         # --- OpenAI Connection ---
-        openai_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
+        # User requested strict usage of 'gpt-realtime'
+        openai_url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
+        
+        # [Evidence A] Log the connection URL
+        print(f"[INFO] Connecting to OpenAI Realtime API. URL: {openai_url}")
+        
         openai_headers = {
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "OpenAI-Beta": "realtime=v1"
@@ -203,6 +208,9 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
                         data = json.loads(message)
                         evt = data.get("type")
                         
+                        if evt in ["session.created", "session.updated"]:
+                             print(f"[INFO] OpenAI Session Event ({evt}): {json.dumps(data)}")
+
                         if evt == "response.audio.delta":
                             if state["stream_sid"]:
                                 await websocket.send_text(json.dumps({
