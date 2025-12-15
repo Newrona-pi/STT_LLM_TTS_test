@@ -15,22 +15,44 @@
             <p class="text-muted small">※ Twilioの認証済み番号またはVerified Caller IDである必要があります。</p>
         </div>
 
-        <div class="form-group mb-4">
-            <label>質問1</label>
-            <textarea name="question1" required class="form-control" rows="2">弊社を希望した志望動機を教えてください</textarea>
+        <div id="questions-container">
+            <div class="form-group mb-4 question-item">
+                <label>質問1</label>
+                <textarea name="questions" required class="form-control" rows="2">弊社を希望した志望動機を教えてください</textarea>
+            </div>
+            <div class="form-group mb-4 question-item">
+                <label>質問2</label>
+                <textarea name="questions" required class="form-control"
+                    rows="2">Photoshopやillustratorは使用したことがありますか、ある場合はどの程度出来るかを教えてください</textarea>
+            </div>
+            <div class="form-group mb-4 question-item">
+                <label>質問3</label>
+                <textarea name="questions" required class="form-control"
+                    rows="2">AIなどは普段使用していますが、使用している場合はどういったことに使っているかを教えてください</textarea>
+            </div>
         </div>
 
-        <div class="form-group mb-4">
-            <label>質問2</label>
-            <textarea name="question2" required class="form-control"
-                rows="2">Photoshopやillustratorは使用したことがありますか、ある場合はどの程度出来るかを教えてください</textarea>
+        <div class="mb-4">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion()">＋ 質問を追加</button>
+            <button type="button" class="btn btn-warning btn-sm" onclick="removeQuestion()">－ 最後の質問を削除</button>
         </div>
 
-        <div class="form-group mb-4">
-            <label>質問3</label>
-            <textarea name="question3" required class="form-control"
-                rows="2">AIなどは普段使用していますが、使用している場合はどういったことに使っているかを教えてください</textarea>
-        </div>
+        <script>
+            function addQuestion() {
+                const container = document.getElementById('questions-container');
+                const count = container.children.length + 1;
+                const div = document.createElement('div');
+                div.className = 'form-group mb-4 question-item';
+                div.innerHTML = `<label>質問${count}</label><textarea name="questions" required class="form-control" rows="2"></textarea>`;
+                container.appendChild(div);
+            }
+            function removeQuestion() {
+                const container = document.getElementById('questions-container');
+                if (container.children.length > 1) {
+                    container.removeChild(container.lastElementChild);
+                }
+            }
+        </script>
 
         <button type="submit" class="btn btn-danger btn-lg" style="width: 100%;">架電実行</button>
     </form>

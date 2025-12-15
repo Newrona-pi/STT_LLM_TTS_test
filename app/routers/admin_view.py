@@ -300,12 +300,13 @@ async def debug_call_page(request: Request):
 @router.post("/debug/call", summary="デバッグ架電実行")
 async def debug_call_action(
     phone: str = Form(...),
-    question1: str = Form(...),
-    question2: str = Form(...),
-    question3: str = Form(...),
+    questions: List[str] = Form(...),
     session: Session = Depends(get_session)
 ):
-    # 1. Setup Question Set
+    # Retrieve dynamic list of questions
+    # FastAPI Form handles duplicate keys as list if defined as List[str]
+    
+    # 1. Setup Question Set (as before)
     qs_name = "Debug_Manual_Call"
     q_set = session.exec(select(QuestionSet).where(QuestionSet.name == qs_name)).first()
     if not q_set:
@@ -315,22 +316,25 @@ async def debug_call_action(
         session.refresh(q_set)
     
     # 2. Register Questions
-    # Clear old
     existing_qs = session.exec(select(Question).where(Question.set_id == q_set.id)).all()
     for eq in existing_qs:
         session.delete(eq)
     session.commit()
     
-    # Add new
-    q_texts = [question1, question2, question3]
-    for i, txt in enumerate(q_texts):
+    # questions is now a list
+    for i, txt in enumerate(questions):
         if txt.strip():
             session.add(Question(set_id=q_set.id, text=txt, order=i+1))
     session.commit()
     
-    # 3. Setup Candidate
-    # Normalize phone: remove hyphens for consistency if needed, but Twilio handles most
+    # 3. Setup Candidate & Phone Validation
+    # Twilio requires E.164 (+81...)
+    # User input "0362409373". We need to convert 03 -> +813
     clean_phone = phone.replace("-", "").replace(" ", "")
+    
+    # Simple JP logic: starts with 0 -> replace with +81, remove leading 0
+    if clean_phone.startswith("0"):
+        clean_phone = "+81" + clean_phone[1:]
     
     candidate = session.exec(select(Candidate).where(Candidate.phone == clean_phone)).first()
     if not candidate:
@@ -340,7 +344,7 @@ async def debug_call_action(
         session.add(candidate)
     else:
         candidate.question_set_id = q_set.id
-        candidate.name = f"Debug User ({clean_phone})" # Update name to indicate debug
+        candidate.name = f"Debug User ({clean_phone})" 
         session.add(candidate)
     session.commit()
     session.refresh(candidate)
