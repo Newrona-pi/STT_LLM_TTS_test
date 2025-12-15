@@ -69,6 +69,7 @@ class InterviewReview(SQLModel, table=True):
     recording_url: Optional[str] = None
     transcript: Optional[str] = None
     duration: Optional[int] = None
+    compliance_flag: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     interview: Interview = Relationship(back_populates="reviews")

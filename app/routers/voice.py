@@ -112,17 +112,30 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
             # Twilio Recording URL is usually /Accounts/{AC}/Calls/{CallSid}/Recordings.json
             # We don't have exact URL yet.
             
+            # 1. Text Correction (Simple Rule-based)
+            # Example: "死亡動機" -> "志望動機"
+            corrected_text = a_text.replace("死亡動機", "志望動機")
+            
+            # 2. Compliance Check
+            is_compliant_issue = False
+            blocklist = ["死ね", "馬鹿", "暴力", "脅迫", "差別"] # Extend as needed
+            for w in blocklist:
+                if w in corrected_text:
+                    is_compliant_issue = True
+                    break
+            
             review = InterviewReview(
                 interview_id=interview.id,
                 question_id=q_id,
                 question_text=q_text,
-                transcript=a_text, # Using 'transcript' field for the Answer text
+                transcript=corrected_text, 
                 recording_url="[Full Call Recording]", # Placeholder
-                duration=0
+                duration=0,
+                compliance_flag=is_compliant_issue
             )
             session.add(review)
             session.commit()
-            print(f"[LOG] Saved Review: {q_text} -> {a_text}")
+            print(f"[LOG] Saved Review: {q_text} -> {corrected_text} (Compliant: {not is_compliant_issue})")
 
         # --- OpenAI Connection ---
         openai_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"

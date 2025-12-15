@@ -43,7 +43,15 @@
     <div>
         <p class="text-muted" style="font-size: 0.9rem;">文字起こし:</p>
         <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.5rem; margin-top: 0.5rem;">
+            {% if review.compliance_flag %}
+            <div class="text-error font-bold mb-2">⚠ コンプライアンス警告: 内容が非表示になっています</div>
+            <details>
+                <summary class="cursor-pointer text-sm mb-2" style="color: #aaa;">クリックして表示</summary>
+                {{ review.transcript }}
+            </details>
+            {% else %}
             {{ review.transcript or '（文字起こし中、またはデータなし）' }}
+            {% endif %}
         </div>
     </div>
 </div>
