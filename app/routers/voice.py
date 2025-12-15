@@ -284,7 +284,6 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: int):
                                             "response": {"instructions": "「本日の面接は以上となります。合否の結果は、7営業日以内に応募サイトよりご連絡いたします。お忙しい中、お時間をいただきありがとうございました。失礼いたします。」"}
                                         }))
                                     else:
-                                    else:
                                         # Log Reverse QA
                                         # We save this as a Q: "Question from candidate" A: full_text
                                         # Or better, Q: "Reverse QA", A: full_text
