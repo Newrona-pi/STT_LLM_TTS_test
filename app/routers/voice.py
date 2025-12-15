@@ -6,7 +6,7 @@ import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Query, Depends, Form, BackgroundTasks
 from fastapi.responses import Response
 from sqlmodel import Session, select
-from twilio.twiml.voice_response import VoiceResponse, Connect
+from twilio.twiml.voice_response import VoiceResponse, Connect, Stream, Parameter
 from twilio.rest import Client
 from app.database import get_session
 from app.models import Interview, QuestionSet, Question, InterviewReview, CommunicationLog, Candidate
@@ -65,15 +65,17 @@ async def start_call(
         session.add(interview)
         session.commit()
     
-    # NOTE: Recording is now started inside WebSocket 'start' event to avoid 400 race conditions.
-
+    # [Requirement 1] TwiML Stream URL with interview_id AND Parameter
     resp = VoiceResponse()
     resp.pause(length=1)
     connect = Connect()
-    # Construct WSS URL
-    # Using query param for interview_id
+    
     wss_url = f"wss://{BASE_URL}/voice/stream?interview_id={interview.id}"
-    connect.stream(url=wss_url)
+    
+    stream = Stream(url=wss_url)
+    stream.parameter(name="interview_id", value=str(interview.id)) # Add explicit parameter
+    
+    connect.append(stream)
     resp.append(connect)
     
     return Response(content=str(resp), media_type="application/xml")
@@ -89,57 +91,121 @@ async def call_status(CallSid: str = Form(None), CallStatus: str = Form(None)):
 async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for Twilio Media Stream <-> OpenAI Realtime API.
-    Manually parses interview_id to avoid 403 Forbidden from dependency validation.
+    [Requirement 2 & 3] Enhanced ID resolution and logging.
     """
     await websocket.accept()
     
-    # 1. Parse interview_id safely
+    # [Requirement 3] Log connection details
+    print(f"[INFO] ws connected path={websocket.url.path} query={websocket.query_params}")
+
+    interview_id = None
+    stream_sid = None
+    call_sid = None
+    
+    # 2. (A) Attempt to get interview_id from Query Params
     try:
-        interview_id_str = websocket.query_params.get("interview_id")
-        if not interview_id_str:
-            print("[WARN] WebSocket missing interview_id")
-            await websocket.close()
-            return
-        interview_id = int(interview_id_str)
-    except Exception as e:
-        print(f"[WARN] Invalid interview_id: {e}")
+        if "interview_id" in websocket.query_params:
+            interview_id = int(websocket.query_params["interview_id"])
+    except:
+        pass # Ignore parse error for now, try fallback
+
+    # We need to wait for the 'start' event to reliably get parameters if query fails,
+    # OR if we want to log the mapping properly.
+    # But we cannot start OpenAI session without knowing context? 
+    # Actually we can connect to OpenAI, but we need instructions.
+    # We will buffer until we receive 'start' event from Twilio to confirm ID.
+    
+    # Wait for the first message from Twilio (Must be 'start' or 'connected')
+    # Twilio sends 'connected' then 'start'.
+    
+    async def get_start_params():
+        nonlocal interview_id, stream_sid, call_sid
+        try:
+            # We look for the start event
+            async for message in websocket.iter_text():
+                data = json.loads(message)
+                if data['event'] == 'start':
+                    stream_sid = data['start']['streamSid']
+                    call_sid = data['start']['callSid']
+                    custom_params = data['start'].get('customParameters', {})
+                    
+                    # [Requirement 3] Log start event details
+                    print(f"[INFO] twilio start callSid={call_sid} streamSid={stream_sid} customParameters={custom_params}")
+                    
+                    # 2. (B) Attempt to get from customParameters
+                    if 'interview_id' in custom_params:
+                        try:
+                            interview_id = int(custom_params['interview_id'])
+                            print(f"[INFO] resolved interview_id={interview_id} source=customParameters")
+                        except:
+                             print(f"[WARN] customParameters interview_id invalid: {custom_params['interview_id']}")
+
+                    if not interview_id and websocket.query_params.get("interview_id"):
+                         interview_id = int(websocket.query_params.get("interview_id"))
+                         print(f"[INFO] resolved interview_id={interview_id} source=query_params")
+
+                    return True # Ready to proceed
+                
+                # If we get media before start (unlikely but possible), ignore or buffer?
+                # Start event is usually first metadata.
+        except Exception as e:
+            print(f"[ERROR] Error waiting for start event: {e}")
+            return False
+        return False
+
+    # Execute start parameter resolution
+    if not await get_start_params():
+        print("[WARN] Failed to receive start event or resolve parameters. Closing.")
         await websocket.close()
         return
 
+    if not interview_id:
+        print("[WARN] missing interview_id after checking query and customParameters. Closing.")
+        await websocket.close()
+        return
+
+    # [Requirement 4] Save mapping (DB access)
     from app.database import engine
-    # Use a fresh session for this connection
     with Session(engine) as session:
         interview = session.get(Interview, interview_id)
         if not interview:
-            print(f"[WARN] Interview {interview_id} not found")
+            print(f"[WARN] Interview {interview_id} not found in DB")
             await websocket.close()
             return
-        
-        print(f"[INFO] WebSocket Start. Interview ID: {interview_id}")
 
+        # Note: We could save CallSid to Interview if we want persistent mapping
+        # interview.call_sid = call_sid # If we had this column.
+        # For now, we proceed with memory context.
+        print(f"[INFO] WebSocket Ready. Interview ID: {interview_id} for Call: {call_sid}")
+        
         # --- State Variables ---
         state = {
-            "stage": "intro", # intro, time_check, main_qa, reverse_qa, ending
+            "stage": "intro", 
             "q_index": 0,
             "questions": interview.session_snapshot or [],
-            "stream_sid": None,
-            "current_transcript": [] # Accumulate user speech per turn
+            "stream_sid": stream_sid,
+            "call_sid": call_sid,
+            "current_transcript": []
         }
+
+        # Start Recording (Logic from previous step, now safe)
+        if call_sid:
+            asyncio.create_task(start_twilio_recording(call_sid))
 
         # --- Helper: Save Q&A Log ---
         def save_qa_log(q_text, a_text):
-            # Find question ID if possible
+            # Find question ID
             q_id = None
             if state["q_index"] < len(state["questions"]):
                  if state["questions"][state["q_index"]]["text"] == q_text:
                      q_id = state["questions"][state["q_index"]]["id"]
             
-            # 1. Text Correction (Simple Rule-based)
+            # Text Correction
             corrected_text = a_text.replace("死亡動機", "志望動機")
             
-            # 2. Compliance Check
+            # Compliance Check
             is_compliant_issue = False
-            blocklist = ["死ね", "馬鹿", "暴力", "脅迫", "差別"] # Extend as needed
+            blocklist = ["死ね", "馬鹿", "暴力", "脅迫", "差別"] 
             for w in blocklist:
                 if w in corrected_text:
                     is_compliant_issue = True
@@ -147,22 +213,19 @@ async def websocket_endpoint(websocket: WebSocket):
             
             review = InterviewReview(
                 interview_id=interview.id,
-                question_id=q_id,
+                question_id=q_id, # Optional FK
                 question_text=q_text,
                 transcript=corrected_text, 
-                recording_url="[Full Call Recording]", # Placeholder
+                recording_url=f"Twilio CallSid: {state['call_sid']}", # [Requirement 4] Map CallSid
                 duration=0,
                 compliance_flag=is_compliant_issue
             )
             session.add(review)
             session.commit()
-            print(f"[LOG] Saved Review: {q_text} -> {corrected_text} (Compliant: {not is_compliant_issue})")
+            print(f"[LOG] Saved Review for Interview {interview.id}: {q_text} -> {corrected_text}")
 
         # --- OpenAI Connection ---
-        # User requested strict usage of 'gpt-realtime'
         openai_url = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
-        
-        # [Evidence A] Log the connection URL
         print(f"[INFO] Connecting to OpenAI Realtime API. URL: {openai_url}")
         
         openai_headers = {
@@ -195,6 +258,20 @@ async def websocket_endpoint(websocket: WebSocket):
             }
             await openai_ws.send(json.dumps(session_config))
             
+            # Start Intro Logic immediately after connection
+            await openai_ws.send(json.dumps({
+                "type": "response.create",
+                "response": {
+                    "instructions": """
+                    次のセリフを正確に読み上げてください：
+                    「お忙しいところ、お時間をいただき、ありがとうございます。株式会社パインズのAI面接官です。
+                    只今、面接のお時間はよろしいでしょうか？10分から15分程度となります。はい、か、いいえ、でお答えください。
+                    お話しいただいた内容は録音され、担当者に伝えられます。
+                    ありがとうございます。それでは、弊社への志望動機など、いくつかご質問をさせていただきます。」
+                    """
+                }
+            }))
+
             # --- Event Loops ---
             async def twilio_receiver():
                 try:
@@ -205,29 +282,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "type": "input_audio_buffer.append",
                                 "audio": data['media']['payload']
                             }))
-                        elif data['event'] == 'start':
-                            state["stream_sid"] = data['start']['streamSid']
-                            call_sid = data['start'].get('callSid')
+                        # We already handled 'start' in the init phase
+                        elif data['event'] == 'stop':
+                            print("[INFO] Twilio Media Stream Stopped")
                             
-                            print(f"[INFO] Stream started: {state['stream_sid']} (Call: {call_sid})")
-
-                            # Start Recording Here (Call is active)
-                            if call_sid:
-                                asyncio.create_task(start_twilio_recording(call_sid))
-
-                            # Start Intro - Strict Instructions
-                            await openai_ws.send(json.dumps({
-                                "type": "response.create",
-                                "response": {
-                                    "instructions": """
-                                    次のセリフを正確に読み上げてください：
-                                    「お忙しいところ、お時間をいただき、ありがとうございます。株式会社パインズのAI面接官です。
-                                    只今、面接のお時間はよろしいでしょうか？10分から15分程度となります。はい、か、いいえ、でお答えください。
-                                    お話しいただいた内容は録音され、担当者に伝えられます。
-                                    ありがとうございます。それでは、弊社への志望動機など、いくつかご質問をさせていただきます。」
-                                    """
-                                }
-                            }))
                 except WebSocketDisconnect:
                     print("[INFO] Twilio Disconnected")
                 except Exception as e:
@@ -251,13 +309,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                 }))
                                 
                         elif evt == "conversation.item.input_audio_transcription.completed":
-                            # User text segment
                             text = data.get("transcript", "")
                             if text:
                                 state["current_transcript"].append(text)
                                 print(f"[User]: {text}")
-                            
-                                # Concatenate for logic check
                                 full_text = " ".join(state["current_transcript"])
                                 
                                 # Logic Transition
@@ -266,7 +321,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 if state["stage"] == "intro":
                                     if "はい" in full_text or "大丈夫" in full_text:
                                         state["stage"] = "main_qa"
-                                        state["current_transcript"] = [] # Reset buffer
+                                        state["current_transcript"] = [] 
                                         q_text = state["questions"][0]["text"]
                                         await openai_ws.send(json.dumps({
                                             "type": "response.create",
@@ -285,11 +340,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
                                 elif state["stage"] == "main_qa":
                                     if "以上です" in full_text or "終わり" in full_text:
-                                        # Save LOG for current question
                                         current_q = state["questions"][state["q_index"]]["text"]
                                         save_qa_log(current_q, full_text)
                                         
-                                        # Proceed
                                         state["q_index"] += 1
                                         state["current_transcript"] = []
                                         
@@ -315,10 +368,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                             "response": {"instructions": "「本日の面接は以上となります。合否の結果は、7営業日以内に応募サイトよりご連絡いたします。お忙しい中、お時間をいただきありがとうございました。失礼いたします。」"}
                                         }))
                                     else:
-                                        # Log Reverse QA
                                         save_qa_log("逆質問", full_text)
-                                        
-                                        # Repeat topic
                                         state["current_transcript"] = [] 
                                         await openai_ws.send(json.dumps({
                                             "type": "response.create",
