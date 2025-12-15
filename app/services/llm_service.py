@@ -4,7 +4,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+from openai import OpenAI
+
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def extract_topic(text: str) -> str:
     """
@@ -13,7 +15,7 @@ def extract_topic(text: str) -> str:
     Keep it short (noun only).
     """
     try:
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant. Extract the main topic from the user's question in Japanese. Output ONLY the noun/topic. No extra words."},

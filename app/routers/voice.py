@@ -90,21 +90,62 @@ async def time_check(
     is_negative = any(w in input_val for w in negative)
     
     if is_negative:
-        # Step 7: No
-        resp.say("承知いたしました。改めてウェブサイトよりご予約をお願いいたします。失礼いたします。", language="ja-JP", voice="alice")
-        resp.hangup()
-        interview.status = "interrupted" # or rescheduled?
-        session.add(interview)
-        session.commit()
-    elif is_positive or True: # Default to Yes if unclear? No, better loop. But for MVP let's be generous.
+        # Step 7 (Alter): No -> Reschedule
+        resp.say("左様でございますか。承知いたしました。", language="ja-JP", voice="alice")
+        resp.say("それでは、ご都合の良い日時を教えていただけますでしょうか？お話しいただいた内容は録音され、担当者に伝えられます。お話し終わりましたら、電話をお切りください。", language="ja-JP", voice="alice")
+        resp.record(
+            action=f"/voice/save_reschedule?interview_id={interview.id}",
+            max_length=60,
+            timeout=10, # Wait 10s for them to start
+            trim="trim-silence"
+        )
+        # If record finishes, it goes to save_reschedule.
+        
+    elif is_positive or True: # Default to Yes
         # Step 7: Yes -> Intro
         resp.say("ありがとうございます。それでは、弊社への志望動機など、いくつかご質問をさせていただきます。", language="ja-JP", voice="alice")
-        resp.say("回答が終わりましたら、終わりです、と言っていただくか、シャープボタンを押してください。", language="ja-JP", voice="alice")
+        resp.say("各質問の回答時間は最大3分です。回答が終わりましたら、無言でお待ちいただくか、次の質問へとお進みください。", language="ja-JP", voice="alice")
         interview.current_stage = "main_qa"
         session.add(interview)
         session.commit()
         resp.redirect(f"/voice/question?interview_id={interview.id}&q_index=0")
         
+    return Response(content=str(resp), media_type="application/xml")
+
+@router.post("/save_reschedule")
+async def save_reschedule(
+    background_tasks: BackgroundTasks,
+    interview_id: int = Query(...),
+    RecordingUrl: Optional[str] = Form(None),
+    session: Session = Depends(get_session)
+):
+    interview = session.get(Interview, interview_id)
+    if interview:
+        interview.status = "reschedule_requested"
+        # We store the recording URL in logs or a specific field? 
+        # For MVP, let's create a review-like entry or just log.
+        # Let's add to communication logs or just print for now as "Note"
+        # Ideally, we should add a field to Interview to store "reschedule_recording_url" or create a specialized log.
+        # Using CommunicationLog for now using "inbound" type
+        from app.models import CommunicationLog
+        log = CommunicationLog(
+            candidate_id=interview.candidate_id,
+            type="voice_reschedule",
+            direction="inbound",
+            status="received",
+            provider_message_id=RecordingUrl, # Storing URL here for convenience
+            error_message="User requested reschedule via voice."
+        )
+        session.add(log)
+        session.add(interview)
+        session.commit()
+        
+        # Optionally trigger STT for this too
+        # background_tasks.add_task(process_stt_background, ...) # 需要にあれば
+        
+    resp = VoiceResponse()
+    resp.say("ありがとうございます。担当者より改めてご連絡いたします。失礼いたします。", language="ja-JP", voice="alice")
+    resp.hangup()
     return Response(content=str(resp), media_type="application/xml")
 
 @router.post("/question")
@@ -142,12 +183,28 @@ async def ask_question(
     # Record allows silence trigger (timeout) or key. capturing speech while recording is tricky.
     # We will encourage Key Press (#).
     # Using trim-silence=true will stop if they stop talking (default 5s silence).
+    # Step 9: Record
+    # Updated: No "trim-silence" (keep recording even if silent for a bit), 
+    # Timeout increased for end detection? Twisted requirement: "wait 3 mins" vs "detect finish".
+    # User said: "No silence rule (deprecated)... trigger on 'That's all' OR 3 mins elapsed"
+    # Twilio Record cannot trigger on 'That's all'.
+    # Compromise: Large timeout (e.g. 10-20s silence) or just max_length.
+    # If we remove trim="trim-silence", it records until max_length or hangup or key.
+    # But user wants "Trigger next on 'That's all'". We CANNOT do that natively in TwiML <Record>.
+    # We would need <Stream> or <Gather input='speech'> (but Gather has limit 60s).
+    # Best MVP approach: Use <Record> with keys or long silence.
+    # User said "Button setting not instructed". ok.
+    # User said "Trigger on 'That's all' OR 3 mins".
+    # Since we can't trigger on word in <Record>, we MUST rely on Silence or Time.
+    # Current best: Max 180s. Stop on Silence (but user said "Ah/Um might trigger").
+    # So we increase silence timeout to say 10-15s?
+    
     resp.record(
         action=f"/voice/record?interview_id={interview.id}&q_index={q_index}",
-        max_length=180, # 3 mins
-        finish_on_key="#",
-        timeout=5, # Silence timeout
-        trim="trim-silence"
+        max_length=180, # 3 mins hard limit
+        # finish_on_key="#", # Removed as per "button setting not instructed" (though useful)
+        timeout=15, # Wait 15s of silence before assuming done. "Ah..." usually < 5s.
+        trim="trim-silence" # If we don't trim, we get 15s of silence at end. fine.
     )
     
     return Response(content=str(resp), media_type="application/xml")
