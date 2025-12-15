@@ -105,13 +105,14 @@ def make_outbound_call(to_phone: str, interview_id: int):
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         
         # Webhook URL for the logic
-        url = f"{BASE_URL}/voice/call?interview_id={interview_id}"
+        base_url = BASE_URL.rstrip('/')
+        url = f"{base_url}/voice/call?interview_id={interview_id}"
         
         call = client.calls.create(
             to=to_phone,
             from_=voice_from,
             url=url,
-            status_callback=f"{BASE_URL}/voice/status", 
+            status_callback=f"{base_url}/voice/status", 
             status_callback_event=['completed', 'failed', 'busy', 'no-answer'],
             timeout=20,
             machine_detection='Enable' 
