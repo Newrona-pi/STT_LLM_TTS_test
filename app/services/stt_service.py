@@ -57,7 +57,8 @@ def transcribe_audio_url(audio_url: str, max_retries: int = 5, retry_delay: int 
             transcript = client.audio.transcriptions.create(
                 model="whisper-1", 
                 file=audio_file,
-                language="ja"
+                language="ja",
+                prompt="面接の志望動機や自己PR、質問回答です。専門用語や丁寧語が含まれます。「志望動機」を正しく変換してください。"
             )
         
         # Cleanup

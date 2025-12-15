@@ -62,8 +62,9 @@ async def start_call(
     resp.pause(length=1)
     
     # Step 6: Time Check
+    # Updated: Move recording consent here.
     gather = Gather(input="speech dtmf", action=f"/voice/time_check?interview_id={interview.id}", timeout=5, language="ja-JP")
-    gather.say("只今、面接のお時間はよろしいでしょうか？10分から15分程度となります。はい、か、いいえ、でお答えください。", language="ja-JP", voice=VOICE_NAME)
+    gather.say("只今、面接のお時間はよろしいでしょうか？10分から15分程度となります。お話しいただいた内容は録音され、担当者に伝えられます。はい、か、いいえ、でお答えください。", language="ja-JP", voice=VOICE_NAME)
     resp.append(gather)
     
     # Fallback if no input
@@ -97,7 +98,7 @@ async def time_check(
         # Step 7 (Alter): No -> Reschedule
         VOICE_NAME = "Polly.Mizuki"
         resp.say("左様でございますか。承知いたしました。", language="ja-JP", voice=VOICE_NAME)
-        resp.say("それでは、ご都合の良い日時を教えていただけますでしょうか？お話しいただいた内容は録音され、担当者に伝えられます。お話し終わりましたら、電話をお切りください。", language="ja-JP", voice=VOICE_NAME)
+        resp.say("それでは、ご都合の良い日時を教えていただけますでしょうか？お話し終わりましたら、電話をお切りください。", language="ja-JP", voice=VOICE_NAME)
         resp.record(
             action=f"/voice/save_reschedule?interview_id={interview.id}",
             max_length=60,
@@ -110,7 +111,8 @@ async def time_check(
         # Step 7: Yes -> Intro
         VOICE_NAME = "Polly.Mizuki"
         resp.say("ありがとうございます。それでは、弊社への志望動機など、いくつかご質問をさせていただきます。", language="ja-JP", voice=VOICE_NAME)
-        resp.say("各質問の回答時間は最大3分です。回答が終わりましたら、無言でお待ちいただくか、次の質問へとお進みください。", language="ja-JP", voice=VOICE_NAME)
+        # Updated: Instruction on how to proceed (wait in silence or press # if we supported it, but user said 'trigger words' not working so rely on silence)
+        resp.say("各質問の回答時間は最大3分です。回答が終わりましたら、そのまま無言でお待ちください。次の質問へ進みます。", language="ja-JP", voice=VOICE_NAME)
         interview.current_stage = "main_qa"
         session.add(interview)
         session.commit()
@@ -259,8 +261,9 @@ async def reverse_qa_intro(interview_id: int = Query(...), session: Session = De
     session.commit()
     
     resp = VoiceResponse()
+    VOICE_NAME = "Polly.Mizuki"
     # Step 12
-    resp.say("すべての質問が終わりました。逆に、弊社について聞きたいことはありますか？", language="ja-JP", voice="alice")
+    resp.say("すべての質問が終わりました。逆に、弊社について聞きたいことはありますか？", language="ja-JP", voice=VOICE_NAME)
     resp.redirect(f"/voice/reverse_qa_listen?interview_id={interview.id}")
     return Response(content=str(resp), media_type="application/xml")
 
