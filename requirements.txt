@@ -12,3 +12,4 @@ sendgrid
 openai
 apscheduler
 pytz
+websockets
