@@ -67,7 +67,7 @@ def send_sms(to_phone: str, content: str, candidate_id: int = None, session: Ses
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         message = client.messages.create(
             body=content,
-            from_=TWILIO_SMS_FROM_NUMBER,
+            from_=os.environ.get("TWILIO_FROM_NUMBER") or TWILIO_SMS_FROM_NUMBER, # Prefer Voice Number, fallback to SMS number
             to=to_phone
         )
         status = "sent" # Strictly "queued" initially

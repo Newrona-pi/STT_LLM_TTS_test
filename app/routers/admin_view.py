@@ -279,7 +279,14 @@ async def debug_create_test_call(session: Session = Depends(get_session)):
     session.refresh(interview)
     
     # 5. Execute Call
-    sid = make_outbound_call(phone, interview.id)
+    # Twilio From Number required? make_outbound_call uses env TWILIO_FROM_NUMBER
+    # If not set in env, we must debug why.
+    # Update: user says call failed earlier with "Phone number ... not valid". Fixed in debug_call_action, but verify here in create_test_call too.
+    # Phone normalization for simple debug button:
+    clean_phone = phone.replace("-", "").replace(" ", "")
+    if clean_phone.startswith("0"): clean_phone = "+81" + clean_phone[1:]
+    
+    sid = make_outbound_call(clean_phone, interview.id)
     if sid:
         interview.status = "calling"
         session.add(interview)
@@ -329,13 +336,17 @@ async def debug_call_action(
     
     # 3. Setup Candidate & Phone Validation
     # Twilio requires E.164 (+81...)
-    # User input "0362409373". We need to convert 03 -> +813
     clean_phone = phone.replace("-", "").replace(" ", "")
     
     # Simple JP logic: starts with 0 -> replace with +81, remove leading 0
     if clean_phone.startswith("0"):
         clean_phone = "+81" + clean_phone[1:]
     
+    # Also handle if user already input +81
+    if not clean_phone.startswith("+"):
+         # Maybe local number without 0? unlikely but assume JP
+         pass # Assume already correct or unfixable
+
     candidate = session.exec(select(Candidate).where(Candidate.phone == clean_phone)).first()
     if not candidate:
         import uuid
