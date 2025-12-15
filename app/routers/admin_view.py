@@ -288,6 +288,8 @@ async def debug_create_test_call(session: Session = Depends(get_session)):
     else:
         # If calling fails (e.g. no creds even on server?), revert or show error
         # But we redirect to see the status "scheduled" (and maybe retry logic picks it up if it wasn't manual trigger, but manual trigger expects immediate)
+        return HTMLResponse("Call initiation failed. Check server logs/credentials.", status_code=500)
+
 @router.get("/debug/call", response_class=HTMLResponse, summary="デバッグ架電ページ", description="任意の番号と質問でテスト架電を行うフォームを表示します。")
 async def debug_call_page(request: Request):
     return templates.TemplateResponse("admin/debug_call.html", {
