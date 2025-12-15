@@ -54,16 +54,20 @@ async def start_call(
     resp = VoiceResponse()
     
     # Step 5: Greeting
-    resp.say("お電話ありがとうございます。株式会社パインズのAI面接官です。", language="ja-JP", voice="alice")
+    # Updated: More polite greeting
+    # Updated: Voice quality to 'Polly.Mizuki' (Japanese Neural)
+    VOICE_NAME = "Polly.Mizuki" # Neural Japanese Voice (or Google.ja-JP-Neural2 if available)
+    
+    resp.say("お忙しいところ、お時間をいただき、ありがとうございます。株式会社パインズのAI面接官です。", language="ja-JP", voice=VOICE_NAME)
     resp.pause(length=1)
     
     # Step 6: Time Check
     gather = Gather(input="speech dtmf", action=f"/voice/time_check?interview_id={interview.id}", timeout=5, language="ja-JP")
-    gather.say("只今、面接のお時間はよろしいでしょうか？10分から15分程度となります。はい、か、いいえ、でお答えください。", language="ja-JP", voice="alice")
+    gather.say("只今、面接のお時間はよろしいでしょうか？10分から15分程度となります。はい、か、いいえ、でお答えください。", language="ja-JP", voice=VOICE_NAME)
     resp.append(gather)
     
     # Fallback if no input
-    resp.say("聞き取れませんでした。もう一度お願いします。", language="ja-JP", voice="alice")
+    resp.say("聞き取れませんでした。もう一度お願いします。", language="ja-JP", voice=VOICE_NAME)
     resp.redirect(f"/voice/call?interview_id={interview.id}")
     
     return Response(content=str(resp), media_type="application/xml")
@@ -91,8 +95,9 @@ async def time_check(
     
     if is_negative:
         # Step 7 (Alter): No -> Reschedule
-        resp.say("左様でございますか。承知いたしました。", language="ja-JP", voice="alice")
-        resp.say("それでは、ご都合の良い日時を教えていただけますでしょうか？お話しいただいた内容は録音され、担当者に伝えられます。お話し終わりましたら、電話をお切りください。", language="ja-JP", voice="alice")
+        VOICE_NAME = "Polly.Mizuki"
+        resp.say("左様でございますか。承知いたしました。", language="ja-JP", voice=VOICE_NAME)
+        resp.say("それでは、ご都合の良い日時を教えていただけますでしょうか？お話しいただいた内容は録音され、担当者に伝えられます。お話し終わりましたら、電話をお切りください。", language="ja-JP", voice=VOICE_NAME)
         resp.record(
             action=f"/voice/save_reschedule?interview_id={interview.id}",
             max_length=60,
@@ -103,8 +108,9 @@ async def time_check(
         
     elif is_positive or True: # Default to Yes
         # Step 7: Yes -> Intro
-        resp.say("ありがとうございます。それでは、弊社への志望動機など、いくつかご質問をさせていただきます。", language="ja-JP", voice="alice")
-        resp.say("各質問の回答時間は最大3分です。回答が終わりましたら、無言でお待ちいただくか、次の質問へとお進みください。", language="ja-JP", voice="alice")
+        VOICE_NAME = "Polly.Mizuki"
+        resp.say("ありがとうございます。それでは、弊社への志望動機など、いくつかご質問をさせていただきます。", language="ja-JP", voice=VOICE_NAME)
+        resp.say("各質問の回答時間は最大3分です。回答が終わりましたら、無言でお待ちいただくか、次の質問へとお進みください。", language="ja-JP", voice=VOICE_NAME)
         interview.current_stage = "main_qa"
         session.add(interview)
         session.commit()
@@ -169,14 +175,16 @@ async def ask_question(
     resp = VoiceResponse()
     
     # Step 11: Countdown
+    VOICE_NAME = "Polly.Mizuki"
     if remaining <= 3:
         if remaining == 1:
-            resp.say("これが最後の質問です。", language="ja-JP", voice="alice")
+            resp.say("これが最後の質問です。", language="ja-JP", voice=VOICE_NAME)
         else:
-            resp.say(f"残り、{remaining}問です。", language="ja-JP", voice="alice")
+            resp.say(f"残り、{remaining}問です。", language="ja-JP", voice=VOICE_NAME)
             
     # Step 8: Ask
-    resp.say(question["text"], language="ja-JP", voice="alice")
+    VOICE_NAME = "Polly.Mizuki"
+    resp.say(question["text"], language="ja-JP", voice=VOICE_NAME)
     
     # Step 9: Record
     # User wanted "Wait 3 mins", "Trigger 'That's all'".
@@ -259,56 +267,87 @@ async def reverse_qa_intro(interview_id: int = Query(...), session: Session = De
 @router.post("/reverse_qa_listen")
 async def reverse_qa_listen(interview_id: int = Query(...), first_time: bool = Query(True)):
     resp = VoiceResponse()
+    VOICE_NAME = "Polly.Mizuki"
     
     if not first_time:
-        resp.say("他に何か質問はありますか？なければ、ない、とおっしゃってください。", language="ja-JP", voice="alice")
+        resp.say("他に何か質問はありますか？なければ、ない、とおっしゃってください。", language="ja-JP", voice=VOICE_NAME)
         
-    gather = Gather(input="speech", action=f"/voice/reverse_qa_process?interview_id={interview_id}", language="ja-JP", timeout=3, speechTimeout="auto")
-    resp.append(gather)
+    # Updated: Use Record instead of Gather for better listening (30s max, silence timeout)
+    # This allows user to speak longer sentences about their question.
+    resp.record(
+        action=f"/voice/reverse_qa_process?interview_id={interview_id}",
+        max_length=60, # 1 min for question
+        timeout=5, # Wait 5s silence
+        trim="trim-silence"
+    )
     
-    # If no input, assume no more questions? Or prompt again?
-    # Let's prompt once logic
-    resp.say("もし質問がなければ、ない、とおっしゃってください。", language="ja-JP", voice="alice")
-    resp.redirect(f"/voice/reverse_qa_process?interview_id={interview_id}&no_input=true")
+    # If no input (timeout reached without recording? Record usually records silence if no speech)
+    # The record action will be called even if silence.
     
     return Response(content=str(resp), media_type="application/xml")
 
 @router.post("/reverse_qa_process")
 async def reverse_qa_process(
+    background_tasks: BackgroundTasks,
     interview_id: int = Query(...),
-    SpeechResult: Optional[str] = Form(None),
-    no_input: bool = Query(False),
+    RecordingUrl: Optional[str] = Form(None), # From Record
+    # SpeechResult: Optional[str] = Form(None), # From Gather (Removed)
     session: Session = Depends(get_session)
 ):
     interview = session.get(Interview, interview_id)
     resp = VoiceResponse()
+    VOICE_NAME = "Polly.Mizuki"
     
-    text = (SpeechResult or "").strip()
+    # We must transcribe this to know what they said (Yes/No/Question)
+    # But since this is synchronous call flow, we can't wait for Async STT.
+    # We have to use 'Gather' if we want immediate branching based on keywords ("No", "None").
+    # OR we use 'Gather' for the "Do you have questions?" (Yes/No), then 'Record' for the content?
+    # User said: "Heard nothing... closed immediately".
+    # Let's switch to Gather for the "Presence of question" and Record for content?
+    # No, user wants loop: "Any questions?" -> User speaks "About salary..." -> AI: "About salary." -> "Any others?"
+    # To do "About salary" (echo), we MUST STT immediately.
+    # We can't do immediate STT with Record in TwiML easily without Server-Side processing (Stream) or waiting (heavy delay).
+    # Logic B likely used Gather for short phrases.
+    # Workaround: Use Gather with longer timeout?
+    # Gather has limit 60s.
+    # Let's revert to Gather but with longer timeout / better prompt?
+    # OR: Just assume they asked something, record it, and generic "Thank you for the question".
+    # But user wants "Repeat topic". To repeat topic, we need text.
+    # We CANNOT get text from <Record> in real-time TwiML response. We get URL.
+    # We must download URL -> Whisper -> Text. This takes 3-5 seconds.
+    # The user is on the phone waiting. Silence.
+    # Is 5s silence acceptable?
+    # If so, we can do it:
     
-    # Step 15: Check exit triggers
-    exit_triggers = ["ない", "なし", "大丈夫", "以上", "終わり", "no", "nothing"]
-    if no_input or any(t in text.lower() for t in exit_triggers):
-        resp.redirect(f"/voice/end?interview_id={interview.id}")
+    text = ""
+    topic = "ご質問"
+    
+    if RecordingUrl:
+        # Blocking STT (Not ideal but required for functionality)
+        text = transcribe_audio_url(RecordingUrl)
+        if text:
+            # Check exit triggers
+            exit_triggers = ["ない", "なし", "大丈夫", "以上", "終わり", "no", "nothing", "結構"]
+            if any(t in text.lower() for t in exit_triggers):
+                resp.redirect(f"/voice/end?interview_id={interview.id}")
+                return Response(content=str(resp), media_type="application/xml")
+            
+            # Logic: Valid question
+            topic = extract_topic(text)
+            
+            # Save log
+            logs = list(interview.reverse_qa_logs) if interview.reverse_qa_logs else []
+            logs.append({"question": text, "topic": topic, "recording": RecordingUrl, "timestamp": str(datetime.datetime.utcnow())})
+            interview.reverse_qa_logs = logs
+            session.add(interview)
+            session.commit()
+    else:
+        # No recording?
+        resp.redirect(f"/voice/reverse_qa_listen?interview_id={interview.id}&first_time=false")
         return Response(content=str(resp), media_type="application/xml")
-    
-    # Logic: Valid question
+
     # Step 13: Repeat topic
-    topic = extract_topic(text)
-    resp.say(f"{topic}についてですね。", language="ja-JP", voice="alice")
-    
-    # Log it
-    logs = list(interview.reverse_qa_logs) if interview.reverse_qa_logs else []
-    logs.append({"question": text, "topic": topic, "timestamp": str(datetime.datetime.utcnow())})
-    interview.reverse_qa_logs = logs
-    session.add(interview)
-    session.commit()
-    
-    # Step 16 (Part of closing info, user said explained here? No, user said "Questions answered for successful candidates only... via email")
-    # Actually Step 16 is closing.
-    # Here we just acknowledge. "Regarding [Topic], we will answer via email if you pass."
-    # Wait, user said "質問内容は合格者のみにお答え... と説明する" at Step 16 (Closing).
-    # So here just loop? User said "Repeat back topic... Ask if other questions".
-    # User didn't imply answering here.
+    resp.say(f"{topic}についてですね。", language="ja-JP", voice=VOICE_NAME)
     
     resp.redirect(f"/voice/reverse_qa_listen?interview_id={interview.id}&first_time=false")
     return Response(content=str(resp), media_type="application/xml")
@@ -322,13 +361,14 @@ async def end_call(interview_id: int = Query(...), session: Session = Depends(ge
     session.commit()
     
     resp = VoiceResponse()
+    VOICE_NAME = "Polly.Mizuki"
     # Step 16: Closing
-    resp.say("ありがとうございます。本日の面接は以上となります。", language="ja-JP", voice="alice")
-    resp.say("合否の結果は、7営業日以内に応募サイトよりご連絡いたします。", language="ja-JP", voice="alice")
-    resp.say("いただいたご質問については、合格された方にのみ、メール、または次回面接時に回答させていただきます。", language="ja-JP", voice="alice")
+    resp.say("ありがとうございます。本日の面接は以上となります。", language="ja-JP", voice=VOICE_NAME)
+    resp.say("合否の結果は、7営業日以内に応募サイトよりご連絡いたします。", language="ja-JP", voice=VOICE_NAME)
+    resp.say("いただいたご質問については、合格された方にのみ、メール、または次回面接時に回答させていただきます。", language="ja-JP", voice=VOICE_NAME)
     
     # Step 17: Hangup
-    resp.say("お忙しい中、お時間をいただきありがとうございました。失礼いたします。", language="ja-JP", voice="alice")
+    resp.say("お忙しい中、お時間をいただきありがとうございました。失礼いたします。", language="ja-JP", voice=VOICE_NAME)
     resp.hangup()
     
     return Response(content=str(resp), media_type="application/xml")
